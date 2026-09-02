@@ -98,8 +98,6 @@ export default function OrganizerPage() {
   const [savingBirthdayPassword, setSavingBirthdayPassword] = useState(false);
   const [editingGift, setEditingGift] = useState<GiftDraft | null>(null);
   const [savingGift, setSavingGift] = useState(false);
-  const giftEditorRef = useRef<HTMLDivElement | null>(null);
-  const [giftEditorScrollRequest, setGiftEditorScrollRequest] = useState(0);
   const [editingRsvp, setEditingRsvp] = useState<RsvpSubmission | null>(null);
   const [savingRsvp, setSavingRsvp] = useState(false);
 
@@ -154,24 +152,16 @@ export default function OrganizerPage() {
 
   function openGiftEditor(draft: GiftDraft) {
     setEditingGift(draft);
-    setGiftEditorScrollRequest((current) => current + 1);
   }
 
   useEffect(() => {
-    if (!giftEditorScrollRequest || tab !== "presentes") return;
-
-    let secondFrame = 0;
-    const firstFrame = window.requestAnimationFrame(() => {
-      secondFrame = window.requestAnimationFrame(() => {
-        giftEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    });
-
+    if (!editingGift) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      window.cancelAnimationFrame(firstFrame);
-      if (secondFrame) window.cancelAnimationFrame(secondFrame);
+      document.body.style.overflow = previousOverflow;
     };
-  }, [giftEditorScrollRequest, tab]);
+  }, [editingGift]);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -556,18 +546,12 @@ export default function OrganizerPage() {
               <Button type="button" onClick={() => openGiftEditor(emptyGift(data.gifts.length + 1))} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><Plus className="size-4" /> Adicionar presente</Button>
             </div>
 
-            {editingGift && !editingGift.id && (
-              <div ref={giftEditorRef} className="scroll-mt-28">
-                <GiftEditor key="new-gift" draft={editingGift} onChange={setEditingGift} onCancel={() => setEditingGift(null)} onSubmit={saveGift} saving={savingGift} />
-              </div>
-            )}
 
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               {data.gifts.map((gift) => {
                 const reservation = reservationByGift.get(gift.id);
                 return (
-                  <div key={gift.id} className="contents">
-                  <article className="overflow-hidden rounded-[1.6rem] border border-[#dfd0c6] bg-white shadow-sm">
+                  <article key={gift.id} className="overflow-hidden rounded-[1.6rem] border border-[#dfd0c6] bg-white shadow-sm">
                     <OrganizerGiftCardImage gift={gift} />
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
@@ -596,19 +580,6 @@ export default function OrganizerPage() {
                       </div>
                     </div>
                   </article>
-                  {editingGift?.id === gift.id && (
-                    <div ref={giftEditorRef} className="scroll-mt-28 lg:col-span-2">
-                      <GiftEditor
-                        key={`edit-${gift.id}`}
-                        draft={editingGift}
-                        onChange={setEditingGift}
-                        onCancel={() => setEditingGift(null)}
-                        onSubmit={saveGift}
-                        saving={savingGift}
-                      />
-                    </div>
-                  )}
-                  </div>
                 );
               })}
             </div>
@@ -657,6 +628,27 @@ export default function OrganizerPage() {
           </section>
         )}
       </div>
+
+      {editingGift && (
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-[#2d1620]/60 px-3 py-4 backdrop-blur-sm sm:px-6 sm:py-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label={editingGift.id ? `Editar ${editingGift.name}` : "Adicionar presente"}
+        >
+          <div className="mx-auto w-full max-w-5xl">
+            <GiftEditor
+              key={editingGift.id ? `gift-modal-${editingGift.id}` : "gift-modal-new"}
+              draft={editingGift}
+              onChange={setEditingGift}
+              onCancel={() => setEditingGift(null)}
+              onSubmit={saveGift}
+              saving={savingGift}
+            />
+          </div>
+        </div>
+      )}
+
       <Toaster richColors closeButton position="top-center" />
     </main>
   );
