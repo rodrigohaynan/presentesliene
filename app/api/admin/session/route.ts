@@ -38,8 +38,10 @@ export async function POST(request: Request) {
     return Response.json({ error: "Senha inválida." }, { status: 401 });
   }
 
+  const token = await createOrganizerToken(role);
   const cookieStore = await cookies();
-  cookieStore.set(ADMIN_COOKIE_NAME, await createOrganizerToken(role), adminCookieOptions());
+  cookieStore.set(ADMIN_COOKIE_NAME, token, adminCookieOptions());
+
   return Response.json({ authenticated: true, role });
 }
 

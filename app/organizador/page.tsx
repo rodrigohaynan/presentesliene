@@ -99,6 +99,7 @@ export default function OrganizerPage() {
   const [editingGift, setEditingGift] = useState<GiftDraft | null>(null);
   const [savingGift, setSavingGift] = useState(false);
   const giftEditorRef = useRef<HTMLDivElement | null>(null);
+  const [giftEditorScrollRequest, setGiftEditorScrollRequest] = useState(0);
   const [editingRsvp, setEditingRsvp] = useState<RsvpSubmission | null>(null);
   const [savingRsvp, setSavingRsvp] = useState(false);
 
@@ -153,10 +154,24 @@ export default function OrganizerPage() {
 
   function openGiftEditor(draft: GiftDraft) {
     setEditingGift(draft);
-    window.setTimeout(() => {
-      giftEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
+    setGiftEditorScrollRequest((current) => current + 1);
   }
+
+  useEffect(() => {
+    if (!giftEditorScrollRequest || tab !== "presentes") return;
+
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        giftEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [giftEditorScrollRequest, tab]);
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -541,9 +556,9 @@ export default function OrganizerPage() {
               <Button type="button" onClick={() => openGiftEditor(emptyGift(data.gifts.length + 1))} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><Plus className="size-4" /> Adicionar presente</Button>
             </div>
 
-            {editingGift && (
+            {editingGift && !editingGift.id && (
               <div ref={giftEditorRef} className="scroll-mt-28">
-                <GiftEditor draft={editingGift} onChange={setEditingGift} onCancel={() => setEditingGift(null)} onSubmit={saveGift} saving={savingGift} />
+                <GiftEditor key="new-gift" draft={editingGift} onChange={setEditingGift} onCancel={() => setEditingGift(null)} onSubmit={saveGift} saving={savingGift} />
               </div>
             )}
 
@@ -551,12 +566,13 @@ export default function OrganizerPage() {
               {data.gifts.map((gift) => {
                 const reservation = reservationByGift.get(gift.id);
                 return (
-                  <article key={gift.id} className="overflow-hidden rounded-[1.6rem] border border-[#dfd0c6] bg-white shadow-sm">
+                  <div key={gift.id} className="contents">
+                  <article className="overflow-hidden rounded-[1.6rem] border border-[#dfd0c6] bg-white shadow-sm">
                     <OrganizerGiftCardImage gift={gift} />
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p>{gift.suggestionUrl && <a href={gift.suggestionUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-bold text-[#7d1f37] hover:underline">Abrir link de sugestão ↗</a>}</div>
-                        <Button type="button" variant="outline" onClick={() => openGiftEditor({ ...gift, captureSuggestionImage: false })} className="shrink-0 rounded-full border-[#d7c6bb] bg-white"><Edit3 className="size-4" /></Button>
+                        <Button type="button" variant="outline" onClick={() => openGiftEditor({ ...gift, captureSuggestionImage: false })} aria-label={`Editar ${gift.name}`} className="h-9 shrink-0 gap-1.5 rounded-full border-[#d7c6bb] bg-white px-3"><Edit3 className="size-4" /><span>Editar</span></Button>
                       </div>
                       {reservation && (
                         <div className="mt-4 rounded-2xl bg-[#f8f3ef] p-4">
@@ -580,6 +596,19 @@ export default function OrganizerPage() {
                       </div>
                     </div>
                   </article>
+                  {editingGift?.id === gift.id && (
+                    <div ref={giftEditorRef} className="scroll-mt-28 lg:col-span-2">
+                      <GiftEditor
+                        key={`edit-${gift.id}`}
+                        draft={editingGift}
+                        onChange={setEditingGift}
+                        onCancel={() => setEditingGift(null)}
+                        onSubmit={saveGift}
+                        saving={savingGift}
+                      />
+                    </div>
+                  )}
+                  </div>
                 );
               })}
             </div>
