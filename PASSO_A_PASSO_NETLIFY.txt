@@ -48,3 +48,9 @@ Não é necessário Supabase, Firebase ou outro banco externo para esta versão.
 OBSERVAÇÃO SOBRE O PRIMEIRO BUILD
 Foi adicionada a dependência @netlify/blobs. O Netlify executa npm install e atualiza as dependências automaticamente.
 Se o Netlify reutilizar um cache antigo e acusar módulo ausente, faça um novo deploy usando a opção de limpar o cache de build.
+
+ATUALIZAÇÃO DE FUNCIONALIDADES
+- O painel /organizador agora permite editar e excluir confirmações/convidados.
+- Nomes duplicados de convidados geram aviso com o nome do responsável pela confirmação anterior.
+- Presentes podem receber imagem de referência diretamente pelo admin.
+- As imagens são armazenadas no Netlify Blobs; não é necessária nenhuma nova variável de ambiente além de ADMIN_PASSWORD.

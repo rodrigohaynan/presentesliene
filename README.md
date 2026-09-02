@@ -28,3 +28,11 @@ Para validar a compilação:
 ```bash
 npm run build
 ```
+
+## Atualização — convidados, duplicidade e fotos dos presentes
+
+- O nome para contato é apenas o responsável pela confirmação. Somente os nomes cadastrados em **Pessoas confirmadas** entram na contagem de adultos/crianças.
+- O painel privado mostra os nomes confirmados e a categoria de cada pessoa no resumo.
+- Nomes de convidados repetidos geram um aviso informando quem fez a confirmação anterior; é possível prosseguir apenas quando realmente forem pessoas diferentes com o mesmo nome.
+- O administrador pode editar o responsável, WhatsApp, nomes e categoria adulto/criança, remover uma pessoa da confirmação ou excluir a confirmação inteira.
+- Cada presente pode ter uma foto de referência enviada pelo administrador. A imagem é otimizada no navegador e persistida separadamente no Netlify Blobs.

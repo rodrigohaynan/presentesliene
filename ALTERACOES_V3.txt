@@ -1,0 +1,33 @@
+ATUALIZAÇÃO V3 — CONVIDADOS + NOMES DUPLICADOS + IMAGENS
+
+1. CONFIRMAÇÃO DE PRESENÇA
+- O nome do responsável pelo contato agora fica claramente separado dos convidados.
+- Somente os nomes em "Pessoas confirmadas" entram na contagem.
+- O formulário mostra, antes do envio, total de pessoas, adultos e crianças.
+- Crianças aparecem explicitamente no resumo privado com nome e categoria.
+
+2. NOMES DUPLICADOS
+- A comparação ignora diferença de maiúsculas/minúsculas, acentos e espaços extras.
+- Se um convidado com o mesmo nome já existir, o site avisa:
+  "pessoa com nome igual foi adicionada por [Nome para contato]".
+- O usuário pode cancelar e corrigir ou confirmar mesmo assim se forem duas pessoas diferentes com o mesmo nome.
+
+3. ADMIN — CONVIDADOS
+- Editar nome do responsável e WhatsApp.
+- Editar nome de cada convidado.
+- Trocar Adulto/Criança.
+- Adicionar pessoa a uma confirmação existente.
+- Remover uma pessoa de uma confirmação.
+- Excluir a confirmação inteira e retirar todos os seus convidados da contagem.
+
+4. ADMIN — IMAGENS DOS PRESENTES
+- Envio de JPG/PNG/WEBP pelo painel.
+- Imagem é reduzida automaticamente no navegador.
+- Arquivo é salvo separadamente no Netlify Blobs.
+- É possível trocar ou remover a imagem.
+- A imagem aparece na lista pública de presentes.
+
+5. COMPATIBILIDADE
+- Mantém os dados já existentes no Netlify Blobs.
+- Não exige nova variável de ambiente.
+- ADMIN_PASSWORD continua sendo a única configuração de senha necessária.
