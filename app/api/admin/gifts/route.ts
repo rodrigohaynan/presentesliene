@@ -13,11 +13,15 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
   const description = clean(body.description, 500);
   const priceHint = clean(body.priceHint, 100);
   const icon = clean(body.icon, 30) as GiftIcon;
+  const imageKey = typeof body.imageKey === "string" ? body.imageKey.trim() : "";
   const order = Number(body.order);
 
   if (requireId && !id) return { error: "Item inválido." } as const;
   if (name.length < 2) return { error: "Informe o nome do presente." } as const;
   if (!GIFT_ICONS.includes(icon)) return { error: "Ícone inválido." } as const;
+  if (imageKey && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(imageKey)) {
+    return { error: "A referência da imagem do presente é inválida." } as const;
+  }
 
   return {
     gift: {
@@ -26,6 +30,7 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
       description,
       priceHint,
       icon,
+      imageKey: imageKey || undefined,
       order: Number.isFinite(order) ? Math.max(1, Math.round(order)) : 1,
     },
   } as const;

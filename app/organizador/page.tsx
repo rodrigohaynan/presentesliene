@@ -1,17 +1,16 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Baby,
-  CalendarClock,
   CheckCircle2,
   Edit3,
   Gift,
+  ImagePlus,
   KeyRound,
   LockKeyhole,
   LogOut,
-  MapPin,
   Plus,
   RefreshCw,
   Save,
@@ -27,6 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Toaster } from "@/components/ui/sonner";
 import {
   GIFT_ICONS,
+  type AttendeeCategory,
   type GiftIcon,
   type GiftItem,
   type GiftReservation,
@@ -42,14 +42,20 @@ type DashboardData = {
 };
 
 type Tab = "resumo" | "presencas" | "presentes" | "festa";
-
 type GiftDraft = Omit<GiftItem, "id"> & { id?: string };
+type DuplicateInfo = {
+  submittedName: string;
+  existingName: string;
+  contactName: string;
+  rsvpId: string;
+};
 
 const emptyGift = (order = 1): GiftDraft => ({
   name: "",
   description: "",
   priceHint: "",
   icon: "gift",
+  imageKey: undefined,
   order,
 });
 
@@ -81,6 +87,8 @@ export default function OrganizerPage() {
   const [savingParty, setSavingParty] = useState(false);
   const [editingGift, setEditingGift] = useState<GiftDraft | null>(null);
   const [savingGift, setSavingGift] = useState(false);
+  const [editingRsvp, setEditingRsvp] = useState<RsvpSubmission | null>(null);
+  const [savingRsvp, setSavingRsvp] = useState(false);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -113,7 +121,11 @@ export default function OrganizerPage() {
       .finally(() => setAuthChecked(true));
   }, [loadDashboard]);
 
-  const reservationByGift = useMemo(() => new Map((data?.reservations ?? []).map((reservation) => [reservation.giftId, reservation])), [data?.reservations]);
+  const reservationByGift = useMemo(
+    () => new Map((data?.reservations ?? []).map((reservation) => [reservation.giftId, reservation])),
+    [data?.reservations],
+  );
+
   const attendance = useMemo(() => {
     const attendees = (data?.rsvps ?? []).flatMap((rsvp) => rsvp.attendees);
     return {
@@ -149,6 +161,8 @@ export default function OrganizerPage() {
     await fetch("/api/admin/session", { method: "DELETE" });
     setAuthenticated(false);
     setData(null);
+    setEditingRsvp(null);
+    setEditingGift(null);
   }
 
   async function saveParty(event: FormEvent<HTMLFormElement>) {
@@ -163,7 +177,7 @@ export default function OrganizerPage() {
       });
       const result = (await response.json()) as { party?: PartyConfig; error?: string };
       if (!response.ok || !result.party) throw new Error(result.error ?? "Não foi possível salvar.");
-      setData((current) => current ? { ...current, party: result.party! } : current);
+      setData((current) => (current ? { ...current, party: result.party! } : current));
       setPartyDraft(result.party);
       toast.success("Dados da festa atualizados.");
     } catch (error) {
@@ -222,6 +236,69 @@ export default function OrganizerPage() {
       await loadDashboard();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível liberar.");
+    }
+  }
+
+  async function performRsvpSave(allowDuplicate = false): Promise<"saved" | "cancelled"> {
+    if (!editingRsvp) return "cancelled";
+    const response = await fetch("/api/admin/rsvps", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...editingRsvp, allowDuplicate }),
+    });
+    const result = (await response.json()) as {
+      rsvp?: RsvpSubmission;
+      error?: string;
+      code?: string;
+      duplicates?: DuplicateInfo[];
+    };
+
+    if (response.status === 409 && result.code === "duplicate-name" && result.duplicates?.length) {
+      const lines = result.duplicates.map((item) =>
+        item.rsvpId === "current"
+          ? `• ${item.submittedName}: aparece duas vezes nesta confirmação.`
+          : `• ${item.submittedName}: pessoa com nome igual foi adicionada por ${item.contactName}.`,
+      );
+      const proceed = window.confirm(
+        `ATENÇÃO — NOME DUPLICADO\n\n${lines.join("\n")}\n\nSe forem pessoas diferentes com o mesmo nome, toque em OK para salvar mesmo assim.`,
+      );
+      if (!proceed) return "cancelled";
+      return performRsvpSave(true);
+    }
+
+    if (!response.ok || !result.rsvp) throw new Error(result.error ?? "Não foi possível editar os convidados.");
+    return "saved";
+  }
+
+  async function saveRsvp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingRsvp || savingRsvp) return;
+    setSavingRsvp(true);
+    try {
+      const outcome = await performRsvpSave();
+      if (outcome === "cancelled") return;
+      toast.success("Convidados atualizados.");
+      setEditingRsvp(null);
+      await loadDashboard();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível editar os convidados.");
+    } finally {
+      setSavingRsvp(false);
+    }
+  }
+
+  async function deleteRsvpItem(rsvp: RsvpSubmission) {
+    const names = rsvp.attendees.map((item) => item.name).join(", ");
+    if (!window.confirm(`Excluir esta confirmação e remover da contagem: ${names}?`)) return;
+    try {
+      const response = await fetch(`/api/admin/rsvps?id=${encodeURIComponent(rsvp.id)}`, { method: "DELETE" });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível excluir.");
+      if (editingRsvp?.id === rsvp.id) setEditingRsvp(null);
+      toast.success("Confirmação excluída e convidados removidos da contagem.");
+      await loadDashboard();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível excluir.");
     }
   }
 
@@ -306,8 +383,11 @@ export default function OrganizerPage() {
                 <div className="mt-5 space-y-3">
                   {data.rsvps.length === 0 ? <p className="text-sm text-[#806e72]">Ainda não há confirmações.</p> : data.rsvps.slice(0, 5).map((rsvp) => (
                     <div key={rsvp.id} className="rounded-2xl bg-[#faf5f1] p-4">
-                      <div className="flex items-center justify-between gap-3"><p className="font-semibold">{rsvp.contactName}</p><span className="text-xs text-[#8f7c80]">{rsvp.attendees.length} pessoa(s)</span></div>
+                      <div className="flex items-center justify-between gap-3"><p className="font-semibold">Contato: {rsvp.contactName}</p><span className="text-xs text-[#8f7c80]">{rsvp.attendees.length} pessoa(s)</span></div>
                       <p className="mt-1 text-sm text-[#806e72]">{rsvp.whatsapp}</p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {rsvp.attendees.map((attendee, index) => <AttendeeBadge key={`${rsvp.id}-summary-${index}`} attendee={attendee} />)}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -330,25 +410,45 @@ export default function OrganizerPage() {
         ) : tab === "presencas" ? (
           <section className="mt-7">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Lista privada</p><h2 className="mt-1 font-serif text-3xl font-semibold">Confirmações de presença</h2></div>
+              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Lista privada</p><h2 className="mt-1 font-serif text-3xl font-semibold">Convidados confirmados</h2><p className="mt-2 text-sm text-[#806e72]">Você pode corrigir nomes, trocar adulto/criança, remover uma pessoa da confirmação ou excluir a confirmação inteira.</p></div>
               <div className="flex gap-2 text-sm"><span className="rounded-full bg-white px-4 py-2 font-semibold">{attendance.adults} adultos</span><span className="rounded-full bg-white px-4 py-2 font-semibold">{attendance.children} crianças</span></div>
             </div>
+
+            {editingRsvp && (
+              <RsvpEditor
+                draft={editingRsvp}
+                onChange={setEditingRsvp}
+                onCancel={() => setEditingRsvp(null)}
+                onSubmit={saveRsvp}
+                saving={savingRsvp}
+              />
+            )}
+
             {data.rsvps.length === 0 ? (
               <div className="rounded-[1.7rem] border border-[#dfd0c6] bg-white p-10 text-center text-[#806e72]">Ainda não há confirmações de presença.</div>
             ) : (
               <div className="grid gap-4 lg:grid-cols-2">
                 {data.rsvps.map((rsvp) => (
                   <article key={rsvp.id} className="rounded-[1.7rem] border border-[#dfd0c6] bg-white p-5 shadow-sm">
-                    <div className="flex items-start justify-between gap-4"><div><p className="font-serif text-xl font-semibold">{rsvp.contactName}</p><p className="mt-1 text-sm text-[#806e72]">WhatsApp: {rsvp.whatsapp}</p></div><span className="rounded-full bg-[#f3ead8] px-3 py-1 text-xs font-bold text-[#6b4a18]">{rsvp.attendees.length} pessoa(s)</span></div>
+                    <div className="flex items-start justify-between gap-4">
+                      <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9b722c]">Responsável pelo contato</p><p className="mt-1 font-serif text-xl font-semibold">{rsvp.contactName}</p><p className="mt-1 text-sm text-[#806e72]">WhatsApp: {rsvp.whatsapp}</p></div>
+                      <span className="rounded-full bg-[#f3ead8] px-3 py-1 text-xs font-bold text-[#6b4a18]">{rsvp.attendees.length} pessoa(s)</span>
+                    </div>
                     <div className="mt-4 space-y-2 border-t border-[#eee4de] pt-4">
                       {rsvp.attendees.map((attendee, index) => (
                         <div key={`${rsvp.id}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-[#faf5f1] px-3 py-2.5">
                           <span className="font-medium">{attendee.name}</span>
-                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${attendee.category === "child" ? "bg-[#f4e7e0] text-[#7d1f37]" : "bg-[#eee8dc] text-[#6b5634]"}`}>{attendee.category === "child" ? <Baby className="size-3.5" /> : <UserRound className="size-3.5" />}{attendee.category === "child" ? "Criança" : "Adulto"}</span>
+                          <CategoryBadge category={attendee.category} />
                         </div>
                       ))}
                     </div>
-                    <p className="mt-4 text-xs text-[#9a878b]">Confirmado em {formatDateTime(rsvp.createdAt)}</p>
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[#eee4de] pt-4">
+                      <p className="text-xs text-[#9a878b]">Confirmado em {formatDateTime(rsvp.createdAt)}</p>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" onClick={() => setEditingRsvp({ ...rsvp, attendees: rsvp.attendees.map((item) => ({ ...item })) })} className="h-9 rounded-full border-[#d7c6bb] bg-white text-xs"><Edit3 className="size-3.5" /> Editar</Button>
+                        <Button type="button" variant="ghost" onClick={() => void deleteRsvpItem(rsvp)} className="h-9 rounded-full text-xs text-red-700 hover:bg-red-50 hover:text-red-800"><Trash2 className="size-3.5" /> Excluir</Button>
+                      </div>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -357,7 +457,7 @@ export default function OrganizerPage() {
         ) : tab === "presentes" ? (
           <section className="mt-7">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Gerenciamento</p><h2 className="mt-1 font-serif text-3xl font-semibold">Lista de presentes</h2><p className="mt-2 text-sm text-[#806e72]">Você pode adicionar, editar, excluir e liberar uma reserva feita por engano.</p></div>
+              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Gerenciamento</p><h2 className="mt-1 font-serif text-3xl font-semibold">Lista de presentes</h2><p className="mt-2 text-sm text-[#806e72]">Além do texto, agora você pode enviar uma foto de referência para cada presente.</p></div>
               <Button type="button" onClick={() => setEditingGift(emptyGift(data.gifts.length + 1))} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><Plus className="size-4" /> Adicionar presente</Button>
             </div>
 
@@ -369,21 +469,24 @@ export default function OrganizerPage() {
               {data.gifts.map((gift) => {
                 const reservation = reservationByGift.get(gift.id);
                 return (
-                  <article key={gift.id} className="rounded-[1.6rem] border border-[#dfd0c6] bg-white p-5 shadow-sm">
-                    <div className="flex items-start justify-between gap-4">
-                      <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p></div>
-                      <Button type="button" variant="outline" onClick={() => setEditingGift({ ...gift })} className="shrink-0 rounded-full border-[#d7c6bb] bg-white"><Edit3 className="size-4" /></Button>
-                    </div>
-                    {reservation && (
-                      <div className="mt-4 rounded-2xl bg-[#f8f3ef] p-4">
-                        <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9b722c]">Escolhido por</p>
-                        <p className="mt-1 font-semibold">{reservation.guestName}</p>
-                        {reservation.guestContact && <p className="mt-1 text-sm text-[#806e72]">{reservation.guestContact}</p>}
-                        <Button type="button" variant="outline" onClick={() => void releaseReservation(gift)} className="mt-3 h-9 rounded-full border-[#d7c6bb] bg-white text-xs">Liberar reserva</Button>
+                  <article key={gift.id} className="overflow-hidden rounded-[1.6rem] border border-[#dfd0c6] bg-white shadow-sm">
+                    {gift.imageKey && <img src={`/api/gift-images?key=${encodeURIComponent(gift.imageKey)}`} alt={`Imagem de ${gift.name}`} className="h-52 w-full object-cover" />}
+                    <div className="p-5">
+                      <div className="flex items-start justify-between gap-4">
+                        <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p></div>
+                        <Button type="button" variant="outline" onClick={() => setEditingGift({ ...gift })} className="shrink-0 rounded-full border-[#d7c6bb] bg-white"><Edit3 className="size-4" /></Button>
                       </div>
-                    )}
-                    <div className="mt-4 flex justify-end">
-                      <Button type="button" variant="ghost" onClick={() => void deleteGiftItem(gift)} className="rounded-full text-red-700 hover:bg-red-50 hover:text-red-800"><Trash2 className="size-4" /> Excluir</Button>
+                      {reservation && (
+                        <div className="mt-4 rounded-2xl bg-[#f8f3ef] p-4">
+                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9b722c]">Escolhido por</p>
+                          <p className="mt-1 font-semibold">{reservation.guestName}</p>
+                          {reservation.guestContact && <p className="mt-1 text-sm text-[#806e72]">{reservation.guestContact}</p>}
+                          <Button type="button" variant="outline" onClick={() => void releaseReservation(gift)} className="mt-3 h-9 rounded-full border-[#d7c6bb] bg-white text-xs">Liberar reserva</Button>
+                        </div>
+                      )}
+                      <div className="mt-4 flex justify-end">
+                        <Button type="button" variant="ghost" onClick={() => void deleteGiftItem(gift)} className="rounded-full text-red-700 hover:bg-red-50 hover:text-red-800"><Trash2 className="size-4" /> Excluir</Button>
+                      </div>
                     </div>
                   </article>
                 );
@@ -426,6 +529,60 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <label className="block text-sm font-semibold text-[#4d3036]">{label}<div className="mt-2">{children}</div></label>;
 }
 
+function CategoryBadge({ category }: { category: AttendeeCategory }) {
+  return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${category === "child" ? "bg-[#f4e7e0] text-[#7d1f37]" : "bg-[#eee8dc] text-[#6b5634]"}`}>{category === "child" ? <Baby className="size-3.5" /> : <UserRound className="size-3.5" />}{category === "child" ? "Criança" : "Adulto"}</span>;
+}
+
+function AttendeeBadge({ attendee }: { attendee: RsvpSubmission["attendees"][number] }) {
+  return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${attendee.category === "child" ? "bg-[#f4e7e0] text-[#7d1f37]" : "bg-[#eee8dc] text-[#6b5634]"}`}>{attendee.category === "child" ? <Baby className="size-3.5" /> : <UserRound className="size-3.5" />}{attendee.name} • {attendee.category === "child" ? "Criança" : "Adulto"}</span>;
+}
+
+function RsvpEditor({ draft, onChange, onCancel, onSubmit, saving }: {
+  draft: RsvpSubmission;
+  onChange: (draft: RsvpSubmission) => void;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  saving: boolean;
+}) {
+  function updateAttendee(index: number, patch: Partial<RsvpSubmission["attendees"][number]>) {
+    onChange({ ...draft, attendees: draft.attendees.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) });
+  }
+
+  function removeAttendee(index: number) {
+    if (draft.attendees.length <= 1) return;
+    onChange({ ...draft, attendees: draft.attendees.filter((_, itemIndex) => itemIndex !== index) });
+  }
+
+  function addAttendee() {
+    if (draft.attendees.length >= 12) return;
+    onChange({ ...draft, attendees: [...draft.attendees, { name: "", category: "adult" }] });
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="mb-6 rounded-[1.7rem] border-2 border-[#cdaeb6] bg-[#fffdf9] p-5 shadow-sm sm:p-6">
+      <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#9b722c]">Editar confirmação</p><h3 className="mt-1 font-serif text-2xl font-semibold">Convidados de {draft.contactName}</h3></div><Button type="button" variant="ghost" onClick={onCancel} className="rounded-full"><X className="size-4" /></Button></div>
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <Field label="Responsável pelo contato"><Input value={draft.contactName} onChange={(event) => onChange({ ...draft, contactName: event.target.value })} required minLength={2} maxLength={80} className="h-11 rounded-xl" /></Field>
+        <Field label="WhatsApp"><Input value={draft.whatsapp} onChange={(event) => onChange({ ...draft, whatsapp: event.target.value })} required minLength={8} maxLength={30} className="h-11 rounded-xl" /></Field>
+      </div>
+      <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#eee4de] pt-5"><div><p className="font-semibold">Pessoas desta confirmação</p><p className="mt-1 text-xs text-[#806e72]">Cada linha abaixo conta como uma pessoa no painel.</p></div><Button type="button" variant="outline" onClick={addAttendee} disabled={draft.attendees.length >= 12} className="h-9 rounded-full border-[#d7c6bb] bg-white text-xs"><Plus className="size-3.5" /> Adicionar</Button></div>
+      <div className="mt-4 space-y-3">
+        {draft.attendees.map((attendee, index) => (
+          <div key={`${draft.id}-edit-${index}`} className="grid gap-3 rounded-2xl border border-[#e4d6cd] bg-white p-4 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+            <Field label={`Pessoa ${index + 1}`}><Input value={attendee.name} onChange={(event) => updateAttendee(index, { name: event.target.value })} required minLength={2} maxLength={80} className="h-10 rounded-xl" /></Field>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => updateAttendee(index, { category: "adult" })} className={`h-10 rounded-xl border px-3 text-sm font-semibold ${attendee.category === "adult" ? "border-[#7d1f37] bg-[#7d1f37] text-white" : "border-[#d9c8bd] bg-white text-[#654f54]"}`}><UserRound className="mr-1 inline size-4" />Adulto</button>
+              <button type="button" onClick={() => updateAttendee(index, { category: "child" })} className={`h-10 rounded-xl border px-3 text-sm font-semibold ${attendee.category === "child" ? "border-[#7d1f37] bg-[#7d1f37] text-white" : "border-[#d9c8bd] bg-white text-[#654f54]"}`}><Baby className="mr-1 inline size-4" />Criança</button>
+            </div>
+            <Button type="button" variant="ghost" onClick={() => removeAttendee(index)} disabled={draft.attendees.length <= 1} className="h-10 rounded-xl text-red-700 hover:bg-red-50"><Trash2 className="size-4" /></Button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2"><Button type="submit" disabled={saving} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><CheckCircle2 className="size-4" /> {saving ? "Salvando…" : "Salvar convidados"}</Button><Button type="button" variant="outline" onClick={onCancel} className="rounded-full border-[#d7c6bb] bg-white">Cancelar</Button></div>
+    </form>
+  );
+}
+
 function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
   draft: GiftDraft;
   onChange: (draft: GiftDraft) => void;
@@ -433,19 +590,138 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   saving: boolean;
 }) {
+  const [processingImage, setProcessingImage] = useState(false);
+  const originalImageKey = useRef(draft.imageKey);
+
+  async function discardTemporaryImage(imageKey: string | undefined) {
+    if (!imageKey || imageKey === originalImageKey.current) return;
+    await fetch(`/api/admin/gift-images?key=${encodeURIComponent(imageKey)}`, { method: "DELETE" }).catch(() => undefined);
+  }
+
+  async function chooseImage(file: File | undefined) {
+    if (!file || processingImage) return;
+    setProcessingImage(true);
+    try {
+      const compressed = await compressGiftImage(file);
+      const form = new FormData();
+      form.append("file", new File([compressed], "presente.webp", { type: "image/webp" }));
+      const response = await fetch("/api/admin/gift-images", { method: "POST", body: form });
+      const result = (await response.json()) as { imageKey?: string; error?: string };
+      if (!response.ok || !result.imageKey) {
+        throw new Error(result.error ?? "Não foi possível enviar a imagem.");
+      }
+      const previousKey = draft.imageKey;
+      onChange({ ...draft, imageKey: result.imageKey });
+      await discardTemporaryImage(previousKey);
+      toast.success("Imagem enviada. Agora salve o presente.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível preparar a imagem.");
+    } finally {
+      setProcessingImage(false);
+    }
+  }
+
+  async function removeImage() {
+    const currentKey = draft.imageKey;
+    onChange({ ...draft, imageKey: undefined });
+    await discardTemporaryImage(currentKey);
+  }
+
+  async function cancelEditor() {
+    await discardTemporaryImage(draft.imageKey);
+    onCancel();
+  }
+
   return (
     <form onSubmit={onSubmit} className="mb-5 rounded-[1.7rem] border-2 border-[#cdaeb6] bg-[#fffdf9] p-5 shadow-sm sm:p-6">
-      <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#9b722c]">{draft.id ? "Editar item" : "Novo item"}</p><h3 className="mt-1 font-serif text-2xl font-semibold">{draft.id ? draft.name : "Adicionar presente"}</h3></div><Button type="button" variant="ghost" onClick={onCancel} className="rounded-full"><X className="size-4" /></Button></div>
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <Field label="Nome do presente"><Input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} required minLength={2} maxLength={120} className="h-11 rounded-xl" /></Field>
-        <Field label="Ordem"><Input type="number" min={1} value={draft.order} onChange={(event) => onChange({ ...draft, order: Number(event.target.value) })} className="h-11 rounded-xl" /></Field>
-        <div className="sm:col-span-2"><Field label="Descrição"><Textarea value={draft.description} onChange={(event) => onChange({ ...draft, description: event.target.value })} maxLength={500} rows={3} className="rounded-xl" /></Field></div>
-        <Field label="Observação curta"><Input value={draft.priceHint} onChange={(event) => onChange({ ...draft, priceHint: event.target.value })} maxLength={100} placeholder="Ex.: Tamanho M" className="h-11 rounded-xl" /></Field>
-        <Field label="Ícone"><select value={draft.icon} onChange={(event) => onChange({ ...draft, icon: event.target.value as GiftIcon })} className="h-11 w-full rounded-xl border border-[#d8c5b8] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#a96b7b]">{GIFT_ICONS.map((icon) => <option key={icon} value={icon}>{iconLabels[icon]}</option>)}</select></Field>
+      <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#9b722c]">{draft.id ? "Editar item" : "Novo item"}</p><h3 className="mt-1 font-serif text-2xl font-semibold">{draft.id ? draft.name : "Adicionar presente"}</h3></div><Button type="button" variant="ghost" onClick={() => void cancelEditor()} className="rounded-full"><X className="size-4" /></Button></div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[220px_1fr]">
+        <div>
+          <p className="text-sm font-semibold text-[#4d3036]">Imagem sugerida</p>
+          <div className="mt-2 overflow-hidden rounded-2xl border border-dashed border-[#cdb8ab] bg-white">
+            {draft.imageKey ? (
+              <div>
+                <img src={`/api/gift-images?key=${encodeURIComponent(draft.imageKey)}`} alt="Prévia do presente" className="h-48 w-full object-cover" />
+                <div className="flex gap-2 p-3">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d7c6bb] bg-white px-3 py-2 text-xs font-bold"><ImagePlus className="size-3.5" /> {processingImage ? "Enviando…" : "Trocar"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={processingImage} onChange={(event) => void chooseImage(event.target.files?.[0])} /></label>
+                  <Button type="button" variant="ghost" disabled={processingImage} onClick={() => void removeImage()} className="h-8 rounded-full px-3 text-xs text-red-700 hover:bg-red-50">Remover</Button>
+                </div>
+              </div>
+            ) : (
+              <label className="flex min-h-48 cursor-pointer flex-col items-center justify-center gap-3 p-5 text-center text-[#806e72] hover:bg-[#fffaf5]">
+                <span className="grid size-12 place-items-center rounded-2xl bg-[#f4e7e0] text-[#7d1f37]"><ImagePlus className="size-5" /></span>
+                <span className="text-sm font-semibold">{processingImage ? "Enviando imagem…" : "Enviar foto do presente"}</span>
+                <span className="text-xs leading-5">JPG, PNG ou WEBP. A foto é reduzida automaticamente e armazenada separadamente no Netlify.</span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={processingImage} onChange={(event) => void chooseImage(event.target.files?.[0])} />
+              </label>
+            )}
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Nome do presente"><Input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} required minLength={2} maxLength={120} className="h-11 rounded-xl" /></Field>
+          <Field label="Ordem"><Input type="number" min={1} value={draft.order} onChange={(event) => onChange({ ...draft, order: Number(event.target.value) })} className="h-11 rounded-xl" /></Field>
+          <div className="sm:col-span-2"><Field label="Descrição"><Textarea value={draft.description} onChange={(event) => onChange({ ...draft, description: event.target.value })} maxLength={500} rows={3} className="rounded-xl" /></Field></div>
+          <Field label="Observação curta"><Input value={draft.priceHint} onChange={(event) => onChange({ ...draft, priceHint: event.target.value })} maxLength={100} placeholder="Ex.: Tamanho M" className="h-11 rounded-xl" /></Field>
+          <Field label="Ícone"><select value={draft.icon} onChange={(event) => onChange({ ...draft, icon: event.target.value as GiftIcon })} className="h-11 w-full rounded-xl border border-[#d8c5b8] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#a96b7b]">{GIFT_ICONS.map((icon) => <option key={icon} value={icon}>{iconLabels[icon]}</option>)}</select></Field>
+        </div>
       </div>
-      <div className="mt-5 flex flex-wrap gap-2"><Button type="submit" disabled={saving} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><CheckCircle2 className="size-4" /> {saving ? "Salvando…" : "Salvar presente"}</Button><Button type="button" variant="outline" onClick={onCancel} className="rounded-full border-[#d7c6bb] bg-white">Cancelar</Button></div>
+      <div className="mt-5 flex flex-wrap gap-2"><Button type="submit" disabled={saving || processingImage} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><CheckCircle2 className="size-4" /> {saving ? "Salvando…" : "Salvar presente"}</Button><Button type="button" variant="outline" onClick={() => void cancelEditor()} className="rounded-full border-[#d7c6bb] bg-white">Cancelar</Button></div>
     </form>
   );
+}
+
+async function compressGiftImage(file: File): Promise<Blob> {
+  if (!file.type.match(/^image\/(jpeg|png|webp)$/)) {
+    throw new Error("Escolha uma imagem JPG, PNG ou WEBP.");
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error("A imagem original deve ter no máximo 10 MB.");
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Não foi possível abrir essa imagem."));
+      img.src = objectUrl;
+    });
+
+    const maxSide = 1200;
+    const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Seu navegador não conseguiu preparar a imagem.");
+    context.drawImage(image, 0, 0, width, height);
+
+    let quality = 0.82;
+    let blob = await canvasToWebp(canvas, quality);
+    while (blob.size > 1_300_000 && quality > 0.46) {
+      quality -= 0.08;
+      blob = await canvasToWebp(canvas, quality);
+    }
+    if (blob.size > 1_500_000) {
+      throw new Error("Essa imagem ficou grande demais. Escolha outra foto ou recorte-a antes de enviar.");
+    }
+    return blob;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function canvasToWebp(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) reject(new Error("Não foi possível converter a imagem."));
+      else resolve(blob);
+    }, "image/webp", quality);
+  });
 }
 
 function formatDateTime(value: string) {

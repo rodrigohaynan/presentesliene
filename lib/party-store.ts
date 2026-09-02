@@ -16,6 +16,7 @@ const PARTY_KEY = "party/config";
 const GIFT_PREFIX = "gifts/";
 const RESERVATION_PREFIX = "gift-reservations/";
 const RSVP_PREFIX = "rsvps/";
+const GIFT_IMAGE_PREFIX = "gift-images/";
 
 function store() {
   return getStore({ name: STORE_NAME, consistency: "strong" });
@@ -29,6 +30,76 @@ async function listJSON<T>(prefix: string): Promise<T[]> {
   const { blobs } = await store().list({ prefix });
   const values = await Promise.all(blobs.map((blob) => getJSON<T>(blob.key)));
   return values.filter((value) => value !== null) as T[];
+}
+
+export function normalizeAttendeeName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export type DuplicateAttendee = {
+  submittedName: string;
+  existingName: string;
+  contactName: string;
+  rsvpId: string;
+};
+
+export async function findDuplicateAttendees(
+  attendees: RsvpAttendee[],
+  excludeRsvpId?: string,
+): Promise<DuplicateAttendee[]> {
+  const rsvps = await getAllRsvps();
+  const existing = new Map<string, { name: string; contactName: string; rsvpId: string }>();
+
+  for (const rsvp of rsvps) {
+    if (rsvp.id === excludeRsvpId) continue;
+    for (const attendee of rsvp.attendees) {
+      const key = normalizeAttendeeName(attendee.name);
+      if (key && !existing.has(key)) {
+        existing.set(key, {
+          name: attendee.name,
+          contactName: rsvp.contactName,
+          rsvpId: rsvp.id,
+        });
+      }
+    }
+  }
+
+  const duplicates: DuplicateAttendee[] = [];
+  const submitted = new Map<string, string>();
+  for (const attendee of attendees) {
+    const key = normalizeAttendeeName(attendee.name);
+    if (!key) continue;
+
+    const match = existing.get(key);
+    if (match) {
+      duplicates.push({
+        submittedName: attendee.name,
+        existingName: match.name,
+        contactName: match.contactName,
+        rsvpId: match.rsvpId,
+      });
+      continue;
+    }
+
+    const repeatedInSubmission = submitted.get(key);
+    if (repeatedInSubmission) {
+      duplicates.push({
+        submittedName: attendee.name,
+        existingName: repeatedInSubmission,
+        contactName: "esta mesma confirmação",
+        rsvpId: "current",
+      });
+    } else {
+      submitted.set(key, attendee.name);
+    }
+  }
+
+  return duplicates;
 }
 
 export async function ensurePartyInitialized() {
@@ -114,6 +185,35 @@ export async function reserveGift(
   return { ok: true, reservation };
 }
 
+export async function saveGiftImage(image: Blob): Promise<string> {
+  await ensurePartyInitialized();
+  const imageKey = randomUUID();
+  await store().set(`${GIFT_IMAGE_PREFIX}${imageKey}`, image, {
+    metadata: { contentType: image.type || "image/webp" },
+  });
+  return imageKey;
+}
+
+export async function getGiftImage(
+  imageKey: string,
+): Promise<{ data: Blob; contentType: string } | null> {
+  await ensurePartyInitialized();
+  const result = (await store().getWithMetadata(`${GIFT_IMAGE_PREFIX}${imageKey}`, {
+    type: "blob",
+  })) as { data: Blob; metadata?: { contentType?: string } } | null;
+  if (!result) return null;
+  return {
+    data: result.data,
+    contentType: result.metadata?.contentType || result.data.type || "image/webp",
+  };
+}
+
+export async function deleteGiftImage(imageKey: string): Promise<void> {
+  if (!imageKey) return;
+  await ensurePartyInitialized();
+  await store().delete(`${GIFT_IMAGE_PREFIX}${imageKey}`);
+}
+
 export async function createGift(input: Omit<GiftItem, "id">): Promise<GiftItem> {
   await ensurePartyInitialized();
   const gift: GiftItem = { ...input, id: randomUUID() };
@@ -127,6 +227,10 @@ export async function updateGift(gift: GiftItem): Promise<GiftItem | null> {
   const current = await getJSON<GiftItem>(key);
   if (!current) return null;
   await store().setJSON(key, gift);
+
+  if (current.imageKey && current.imageKey !== gift.imageKey) {
+    await deleteGiftImage(current.imageKey);
+  }
 
   const reservation = await getGiftReservation(gift.id);
   if (reservation && reservation.giftName !== gift.name) {
@@ -143,6 +247,7 @@ export async function deleteGift(giftId: string): Promise<"deleted" | "not-found
   if (!current) return "not-found";
   if (await getGiftReservation(giftId)) return "reserved";
   await store().delete(giftKey);
+  if (current.imageKey) await deleteGiftImage(current.imageKey);
   return "deleted";
 }
 
@@ -170,6 +275,36 @@ export async function createRsvp(input: {
   };
   await store().setJSON(`${RSVP_PREFIX}${submission.id}`, submission, { onlyIfNew: true });
   return submission;
+}
+
+export async function updateRsvp(input: {
+  id: string;
+  contactName: string;
+  whatsapp: string;
+  attendees: RsvpAttendee[];
+}): Promise<RsvpSubmission | null> {
+  await ensurePartyInitialized();
+  const key = `${RSVP_PREFIX}${input.id}`;
+  const current = await getJSON<RsvpSubmission>(key);
+  if (!current) return null;
+
+  const updated: RsvpSubmission = {
+    ...current,
+    contactName: input.contactName,
+    whatsapp: input.whatsapp,
+    attendees: input.attendees,
+  };
+  await store().setJSON(key, updated);
+  return updated;
+}
+
+export async function deleteRsvp(id: string): Promise<boolean> {
+  await ensurePartyInitialized();
+  const key = `${RSVP_PREFIX}${id}`;
+  const current = await getJSON<RsvpSubmission>(key);
+  if (!current) return false;
+  await store().delete(key);
+  return true;
 }
 
 export async function getAllRsvps(): Promise<RsvpSubmission[]> {
