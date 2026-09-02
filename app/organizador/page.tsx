@@ -470,7 +470,7 @@ export default function OrganizerPage() {
                 const reservation = reservationByGift.get(gift.id);
                 return (
                   <article key={gift.id} className="overflow-hidden rounded-[1.6rem] border border-[#dfd0c6] bg-white shadow-sm">
-                    {gift.imageKey && <img src={`/api/gift-images?key=${encodeURIComponent(gift.imageKey)}`} alt={`Imagem de ${gift.name}`} className="h-52 w-full object-cover" />}
+                    {gift.imageKey && <img key={gift.imageKey} src={`/api/gift-images/${encodeURIComponent(gift.imageKey)}`} alt={`Imagem de ${gift.name}`} className="h-52 w-full object-cover" />}
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p></div>
@@ -642,7 +642,7 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
           <div className="mt-2 overflow-hidden rounded-2xl border border-dashed border-[#cdb8ab] bg-white">
             {draft.imageKey ? (
               <div>
-                <img src={`/api/gift-images?key=${encodeURIComponent(draft.imageKey)}`} alt="Prévia do presente" className="h-48 w-full object-cover" />
+                <img key={draft.imageKey} src={`/api/gift-images/${encodeURIComponent(draft.imageKey)}`} alt="Prévia do presente" className="h-48 w-full object-cover" />
                 <div className="flex gap-2 p-3">
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d7c6bb] bg-white px-3 py-2 text-xs font-bold"><ImagePlus className="size-3.5" /> {processingImage ? "Enviando…" : "Trocar"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={processingImage} onChange={(event) => void chooseImage(event.target.files?.[0])} /></label>
                   <Button type="button" variant="ghost" disabled={processingImage} onClick={() => void removeImage()} className="h-8 rounded-full px-3 text-xs text-red-700 hover:bg-red-50">Remover</Button>

@@ -112,7 +112,7 @@ export function GiftList() {
               <article key={gift.id} className="group flex min-h-64 flex-col overflow-hidden rounded-[1.6rem] border border-[#dfd0c6] bg-white/90 shadow-[0_10px_35px_rgba(74,35,41,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#c9a568] hover:shadow-[0_18px_45px_rgba(74,35,41,0.12)]">
                 {gift.imageKey ? (
                   <div className="relative aspect-[4/3] overflow-hidden bg-[#f7eee7]">
-                    <img src={`/api/gift-images?key=${encodeURIComponent(gift.imageKey)}`} alt={`Imagem sugerida de ${gift.name}`} className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.025]" />
+                    <img key={gift.imageKey} src={`/api/gift-images/${encodeURIComponent(gift.imageKey)}`} alt={`Imagem sugerida de ${gift.name}`} className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.025]" />
                     <span className="absolute right-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold tabular-nums text-[#8a6d61] shadow-sm">{String(index + 1).padStart(2, "0")}</span>
                   </div>
                 ) : null}
