@@ -98,6 +98,7 @@ export default function OrganizerPage() {
   const [savingBirthdayPassword, setSavingBirthdayPassword] = useState(false);
   const [editingGift, setEditingGift] = useState<GiftDraft | null>(null);
   const [savingGift, setSavingGift] = useState(false);
+  const giftEditorRef = useRef<HTMLDivElement | null>(null);
   const [editingRsvp, setEditingRsvp] = useState<RsvpSubmission | null>(null);
   const [savingRsvp, setSavingRsvp] = useState(false);
 
@@ -149,6 +150,13 @@ export default function OrganizerPage() {
       children: attendees.filter((item) => item.category === "child").length,
     };
   }, [data?.rsvps]);
+
+  function openGiftEditor(draft: GiftDraft) {
+    setEditingGift(draft);
+    window.setTimeout(() => {
+      giftEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }
 
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -530,11 +538,13 @@ export default function OrganizerPage() {
           <section className="mt-7">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
               <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Gerenciamento</p><h2 className="mt-1 font-serif text-3xl font-semibold">Lista de presentes</h2><p className="mt-2 text-sm text-[#806e72]">Você pode enviar foto e adicionar um link de sugestão de compra para cada presente.</p></div>
-              <Button type="button" onClick={() => setEditingGift(emptyGift(data.gifts.length + 1))} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><Plus className="size-4" /> Adicionar presente</Button>
+              <Button type="button" onClick={() => openGiftEditor(emptyGift(data.gifts.length + 1))} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><Plus className="size-4" /> Adicionar presente</Button>
             </div>
 
             {editingGift && (
-              <GiftEditor draft={editingGift} onChange={setEditingGift} onCancel={() => setEditingGift(null)} onSubmit={saveGift} saving={savingGift} />
+              <div ref={giftEditorRef} className="scroll-mt-28">
+                <GiftEditor draft={editingGift} onChange={setEditingGift} onCancel={() => setEditingGift(null)} onSubmit={saveGift} saving={savingGift} />
+              </div>
             )}
 
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
@@ -546,7 +556,7 @@ export default function OrganizerPage() {
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p>{gift.suggestionUrl && <a href={gift.suggestionUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-bold text-[#7d1f37] hover:underline">Abrir link de sugestão ↗</a>}</div>
-                        <Button type="button" variant="outline" onClick={() => setEditingGift({ ...gift, captureSuggestionImage: false })} className="shrink-0 rounded-full border-[#d7c6bb] bg-white"><Edit3 className="size-4" /></Button>
+                        <Button type="button" variant="outline" onClick={() => openGiftEditor({ ...gift, captureSuggestionImage: false })} className="shrink-0 rounded-full border-[#d7c6bb] bg-white"><Edit3 className="size-4" /></Button>
                       </div>
                       {reservation && (
                         <div className="mt-4 rounded-2xl bg-[#f8f3ef] p-4">
