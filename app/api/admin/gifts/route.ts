@@ -1,8 +1,17 @@
 import { hasOrganizerSession } from "@/lib/admin-auth";
 import { GIFT_ICONS, type GiftIcon, type GiftItem } from "@/lib/party-data";
-import { createGift, deleteGift, releaseGiftReservation, updateGift } from "@/lib/party-store";
+import {
+  createGift,
+  deleteGift,
+  deleteGiftImage,
+  releaseGiftReservation,
+  saveGiftImage,
+  updateGift,
+} from "@/lib/party-store";
+import { captureProductImageFromUrl } from "@/lib/product-image";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 const clean = (value: unknown, max: number) =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -16,6 +25,7 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
   const imageKey = typeof body.imageKey === "string" ? body.imageKey.trim() : "";
   const suggestionUrlInput = clean(body.suggestionUrl, 1000);
   const order = Number(body.order);
+  const captureSuggestionImage = body.captureSuggestionImage === true;
 
   if (requireId && !id) return { error: "Item inválido." } as const;
   if (name.length < 2) return { error: "Informe o nome do presente." } as const;
@@ -41,6 +51,7 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
   }
 
   return {
+    captureSuggestionImage: captureSuggestionImage && Boolean(suggestionUrl),
     gift: {
       ...(requireId ? { id } : {}),
       name,
@@ -58,27 +69,79 @@ async function authorized() {
   return hasOrganizerSession();
 }
 
+async function captureSuggestionImageIfRequested<T extends Omit<GiftItem, "id"> | GiftItem>(
+  gift: T,
+  shouldCapture: boolean,
+): Promise<{ gift: T; capturedImageKey?: string; imageCaptured: boolean; imageCaptureWarning?: string }> {
+  if (!shouldCapture || !gift.suggestionUrl) return { gift, imageCaptured: false };
+
+  try {
+    const captured = await captureProductImageFromUrl(gift.suggestionUrl);
+    const imageKey = await saveGiftImage(captured.blob);
+    return {
+      gift: { ...gift, imageKey } as T,
+      capturedImageKey: imageKey,
+      imageCaptured: true,
+    };
+  } catch (error) {
+    return {
+      gift,
+      imageCaptured: false,
+      imageCaptureWarning:
+        error instanceof Error
+          ? error.message
+          : "Não foi possível capturar automaticamente a imagem do anúncio.",
+    };
+  }
+}
+
 export async function POST(request: Request) {
   if (!(await authorized())) return Response.json({ error: "Não autorizado." }, { status: 401 });
+  let capturedImageKey: string | undefined;
   try {
     const parsed = parseGift((await request.json()) as Record<string, unknown>, false);
     if ("error" in parsed) return Response.json({ error: parsed.error }, { status: 400 });
-    const gift = await createGift(parsed.gift);
-    return Response.json({ gift }, { status: 201 });
+
+    const prepared = await captureSuggestionImageIfRequested(parsed.gift, parsed.captureSuggestionImage);
+    capturedImageKey = prepared.capturedImageKey;
+    const gift = await createGift(prepared.gift);
+    capturedImageKey = undefined;
+    return Response.json(
+      {
+        gift,
+        imageCaptured: prepared.imageCaptured,
+        imageCaptureWarning: prepared.imageCaptureWarning,
+      },
+      { status: 201 },
+    );
   } catch {
+    if (capturedImageKey) await deleteGiftImage(capturedImageKey).catch(() => undefined);
     return Response.json({ error: "Não foi possível adicionar o presente." }, { status: 503 });
   }
 }
 
 export async function PUT(request: Request) {
   if (!(await authorized())) return Response.json({ error: "Não autorizado." }, { status: 401 });
+  let capturedImageKey: string | undefined;
   try {
     const parsed = parseGift((await request.json()) as Record<string, unknown>, true);
     if ("error" in parsed) return Response.json({ error: parsed.error }, { status: 400 });
-    const gift = await updateGift(parsed.gift as GiftItem);
-    if (!gift) return Response.json({ error: "Presente não encontrado." }, { status: 404 });
-    return Response.json({ gift });
+
+    const prepared = await captureSuggestionImageIfRequested(parsed.gift as GiftItem, parsed.captureSuggestionImage);
+    capturedImageKey = prepared.capturedImageKey;
+    const gift = await updateGift(prepared.gift);
+    if (!gift) {
+      if (capturedImageKey) await deleteGiftImage(capturedImageKey).catch(() => undefined);
+      return Response.json({ error: "Presente não encontrado." }, { status: 404 });
+    }
+    capturedImageKey = undefined;
+    return Response.json({
+      gift,
+      imageCaptured: prepared.imageCaptured,
+      imageCaptureWarning: prepared.imageCaptureWarning,
+    });
   } catch {
+    if (capturedImageKey) await deleteGiftImage(capturedImageKey).catch(() => undefined);
     return Response.json({ error: "Não foi possível editar o presente." }, { status: 503 });
   }
 }

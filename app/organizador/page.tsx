@@ -45,7 +45,7 @@ type DashboardData = {
 };
 
 type Tab = "resumo" | "presencas" | "presentes" | "festa";
-type GiftDraft = Omit<GiftItem, "id"> & { id?: string };
+type GiftDraft = Omit<GiftItem, "id"> & { id?: string; captureSuggestionImage?: boolean };
 type DuplicateInfo = {
   submittedName: string;
   existingName: string;
@@ -61,6 +61,7 @@ const emptyGift = (order = 1): GiftDraft => ({
   icon: "gift",
   imageKey: undefined,
   suggestionUrl: undefined,
+  captureSuggestionImage: false,
   order,
 });
 
@@ -245,9 +246,20 @@ export default function OrganizerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editingGift),
       });
-      const result = (await response.json()) as { gift?: GiftItem; error?: string };
+      const result = (await response.json()) as {
+        gift?: GiftItem;
+        error?: string;
+        imageCaptured?: boolean;
+        imageCaptureWarning?: string;
+      };
       if (!response.ok || !result.gift) throw new Error(result.error ?? "Não foi possível salvar o presente.");
-      toast.success(editingGift.id ? "Presente atualizado." : "Presente adicionado.");
+      if (result.imageCaptureWarning) {
+        toast.warning(`Presente salvo, mas a foto do link não foi capturada: ${result.imageCaptureWarning}`);
+      } else if (result.imageCaptured) {
+        toast.success(`${editingGift.id ? "Presente atualizado" : "Presente adicionado"}. Imagem do anúncio capturada automaticamente.`);
+      } else {
+        toast.success(editingGift.id ? "Presente atualizado." : "Presente adicionado.");
+      }
       setEditingGift(null);
       await loadDashboard();
     } catch (error) {
@@ -534,7 +546,7 @@ export default function OrganizerPage() {
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p>{gift.suggestionUrl && <a href={gift.suggestionUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-bold text-[#7d1f37] hover:underline">Abrir link de sugestão ↗</a>}</div>
-                        <Button type="button" variant="outline" onClick={() => setEditingGift({ ...gift })} className="shrink-0 rounded-full border-[#d7c6bb] bg-white"><Edit3 className="size-4" /></Button>
+                        <Button type="button" variant="outline" onClick={() => setEditingGift({ ...gift, captureSuggestionImage: false })} className="shrink-0 rounded-full border-[#d7c6bb] bg-white"><Edit3 className="size-4" /></Button>
                       </div>
                       {reservation && (
                         <div className="mt-4 rounded-2xl bg-[#f8f3ef] p-4">
@@ -701,7 +713,7 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
         throw new Error(result.error ?? "Não foi possível enviar a imagem.");
       }
       const previousKey = draft.imageKey;
-      onChange({ ...draft, imageKey: result.imageKey });
+      onChange({ ...draft, imageKey: result.imageKey, captureSuggestionImage: false });
       await discardTemporaryImage(previousKey);
       toast.success("Imagem enviada. Agora salve o presente.");
     } catch (error) {
@@ -713,7 +725,7 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
 
   async function removeImage() {
     const currentKey = draft.imageKey;
-    onChange({ ...draft, imageKey: undefined });
+    onChange({ ...draft, imageKey: undefined, captureSuggestionImage: false });
     await discardTemporaryImage(currentKey);
   }
 
@@ -761,13 +773,39 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
                 type="text"
                 inputMode="url"
                 value={draft.suggestionUrl ?? ""}
-                onChange={(event) => onChange({ ...draft, suggestionUrl: event.target.value || undefined })}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  const hasChanged = nextValue.trim() !== (draft.suggestionUrl ?? "").trim();
+                  onChange({
+                    ...draft,
+                    suggestionUrl: nextValue || undefined,
+                    captureSuggestionImage: nextValue.trim()
+                      ? Boolean(draft.captureSuggestionImage || hasChanged)
+                      : false,
+                  });
+                }}
                 maxLength={1000}
                 placeholder="https://loja.com/produto ou shopee.com.br/..."
                 className="h-11 rounded-xl"
               />
             </Field>
-            <p className="mt-2 text-xs leading-5 text-[#806e72]">Se deixar vazio, o convidado poderá pesquisar este presente na Shopee ou no Mercado Livre.</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <p className="flex-1 text-xs leading-5 text-[#806e72]">
+                {draft.captureSuggestionImage && draft.suggestionUrl
+                  ? "Ao salvar, o site tentará capturar automaticamente a imagem principal deste anúncio."
+                  : "Se deixar vazio, o convidado poderá pesquisar este presente na Shopee ou no Mercado Livre."}
+              </p>
+              {draft.suggestionUrl && !draft.captureSuggestionImage && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onChange({ ...draft, captureSuggestionImage: true })}
+                  className="h-8 rounded-full border-[#d7c6bb] bg-white px-3 text-xs"
+                >
+                  <ImagePlus className="size-3.5" /> Capturar imagem do link
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
