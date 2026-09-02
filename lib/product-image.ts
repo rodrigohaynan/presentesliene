@@ -307,7 +307,7 @@ function detectedImageType(bytes: Uint8Array, headerType: string) {
   return "";
 }
 
-export async function captureProductImageFromUrl(rawUrl: string): Promise<CapturedProductImage> {
+async function captureProductImageDirect(rawUrl: string): Promise<CapturedProductImage> {
   let productUrl: URL;
   try {
     productUrl = new URL(rawUrl);
@@ -373,4 +373,106 @@ export async function captureProductImageFromUrl(rawUrl: string): Promise<Captur
     blob: new Blob([imageBuffer], { type: contentType }),
     sourceUrl: image.finalUrl.toString(),
   };
+}
+
+
+async function captureProductImageViaMicrolink(rawUrl: string): Promise<CapturedProductImage> {
+  let productUrl: URL;
+  try {
+    productUrl = new URL(rawUrl);
+  } catch {
+    throw new Error("O link de sugestão é inválido.");
+  }
+
+  // Valida o destino antes de enviá-lo ao serviço de fallback.
+  await assertPublicUrl(productUrl);
+
+  const metadataUrl = new URL("https://api.microlink.io/");
+  metadataUrl.searchParams.set("url", productUrl.toString());
+  metadataUrl.searchParams.set("filter", "image.url");
+
+  const metadata = await fetchPublic(
+    metadataUrl,
+    {
+      method: "GET",
+      headers: {
+        "user-agent": USER_AGENT,
+        accept: "application/json",
+      },
+    },
+    18_000,
+  );
+
+  if (!metadata.response.ok) {
+    await metadata.response.body?.cancel().catch(() => undefined);
+    throw new Error("O serviço alternativo não conseguiu ler o anúncio.");
+  }
+
+  const metadataBytes = await readLimited(metadata.response, 1_000_000);
+  let imageAddress = "";
+  try {
+    const payload = JSON.parse(new TextDecoder("utf-8").decode(metadataBytes)) as {
+      status?: string;
+      data?: { image?: { url?: string } | string };
+    };
+    const image = payload.data?.image;
+    imageAddress = typeof image === "string" ? image : image?.url ?? "";
+  } catch {
+    throw new Error("A resposta do serviço alternativo não pôde ser interpretada.");
+  }
+
+  if (!imageAddress) {
+    throw new Error("O anúncio não disponibilizou uma imagem principal.");
+  }
+
+  let imageUrl: URL;
+  try {
+    imageUrl = new URL(imageAddress, productUrl);
+  } catch {
+    throw new Error("A imagem encontrada no anúncio possui um endereço inválido.");
+  }
+
+  const image = await fetchPublic(
+    imageUrl,
+    {
+      method: "GET",
+      headers: {
+        "user-agent": USER_AGENT,
+        accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        referer: productUrl.toString(),
+      },
+    },
+    IMAGE_TIMEOUT_MS,
+  );
+
+  if (!image.response.ok) {
+    await image.response.body?.cancel().catch(() => undefined);
+    throw new Error("A imagem encontrada no anúncio não pôde ser baixada.");
+  }
+
+  const imageBytes = await readLimited(image.response, MAX_IMAGE_BYTES);
+  const contentType = detectedImageType(imageBytes, image.response.headers.get("content-type") ?? "");
+  if (!contentType) throw new Error("O arquivo encontrado no anúncio não é uma imagem válida.");
+
+  const imageBuffer = new ArrayBuffer(imageBytes.byteLength);
+  new Uint8Array(imageBuffer).set(imageBytes);
+
+  return {
+    blob: new Blob([imageBuffer], { type: contentType }),
+    sourceUrl: image.finalUrl.toString(),
+  };
+}
+
+export async function captureProductImageFromUrl(rawUrl: string): Promise<CapturedProductImage> {
+  try {
+    return await captureProductImageDirect(rawUrl);
+  } catch (directError) {
+    try {
+      return await captureProductImageViaMicrolink(rawUrl);
+    } catch {
+      throw directError instanceof Error
+        ? directError
+        : new Error("Não foi possível capturar automaticamente a imagem do anúncio.");
+    }
+  }
 }

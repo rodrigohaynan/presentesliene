@@ -278,6 +278,9 @@ export async function updateGift(gift: GiftItem): Promise<GiftItem | null> {
   if (current.imageKey && current.imageKey !== gift.imageKey) {
     await deleteGiftImage(current.imageKey);
   }
+  if (current.suggestionImageKey && current.suggestionImageKey !== gift.suggestionImageKey) {
+    await deleteGiftImage(current.suggestionImageKey);
+  }
 
   const reservation = await getGiftReservation(gift.id);
   if (reservation && reservation.giftName !== gift.name) {
@@ -295,6 +298,7 @@ export async function deleteGift(giftId: string): Promise<"deleted" | "not-found
   if (await getGiftReservation(giftId)) return "reserved";
   await store().delete(giftKey);
   if (current.imageKey) await deleteGiftImage(current.imageKey);
+  if (current.suggestionImageKey) await deleteGiftImage(current.suggestionImageKey);
   return "deleted";
 }
 

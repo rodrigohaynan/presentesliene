@@ -120,16 +120,18 @@ export function GiftList() {
             const suggestionImageFailed = Boolean(gift.suggestionUrl && failedSuggestionImages.has(gift.suggestionUrl));
             const imageSrc = gift.imageKey
               ? `/api/gift-images/${encodeURIComponent(gift.imageKey)}`
-              : gift.suggestionUrl && !suggestionImageFailed
-                ? `/api/product-image?url=${encodeURIComponent(gift.suggestionUrl)}`
-                : null;
-            const imageComesFromSuggestion = !gift.imageKey && Boolean(gift.suggestionUrl) && Boolean(imageSrc);
+              : gift.suggestionImageKey
+                ? `/api/gift-images/${encodeURIComponent(gift.suggestionImageKey)}`
+                : gift.suggestionUrl && !suggestionImageFailed
+                  ? `/api/product-image?url=${encodeURIComponent(gift.suggestionUrl)}`
+                  : null;
+            const imageComesFromSuggestion = !gift.imageKey && !gift.suggestionImageKey && Boolean(gift.suggestionUrl) && Boolean(imageSrc);
             return (
               <article key={gift.id} className="group flex min-h-64 flex-col overflow-hidden rounded-[1.6rem] border border-[#dfd0c6] bg-white/90 shadow-[0_10px_35px_rgba(74,35,41,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#c9a568] hover:shadow-[0_18px_45px_rgba(74,35,41,0.12)]">
                 {imageSrc ? (
                   <div className="relative aspect-[4/3] overflow-hidden bg-[#f7eee7]">
                     <img
-                      key={gift.imageKey ?? gift.suggestionUrl}
+                      key={gift.imageKey ?? gift.suggestionImageKey ?? gift.suggestionUrl}
                       src={imageSrc}
                       alt={`Imagem sugerida de ${gift.name}`}
                       onError={() => {

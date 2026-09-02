@@ -60,6 +60,7 @@ const emptyGift = (order = 1): GiftDraft => ({
   priceHint: "",
   icon: "gift",
   imageKey: undefined,
+  suggestionImageKey: undefined,
   suggestionUrl: undefined,
   captureSuggestionImage: false,
   order,
@@ -556,7 +557,13 @@ export default function OrganizerPage() {
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p>{gift.suggestionUrl && <a href={gift.suggestionUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-bold text-[#7d1f37] hover:underline">Abrir link de sugestão ↗</a>}</div>
-                        <Button type="button" variant="outline" onClick={() => openGiftEditor({ ...gift, captureSuggestionImage: false })} aria-label={`Editar ${gift.name}`} className="h-9 shrink-0 gap-1.5 rounded-full border-[#d7c6bb] bg-white px-3"><Edit3 className="size-4" /><span>Editar</span></Button>
+                        <Button type="button" variant="outline" onClick={() =>
+                          openGiftEditor({
+                            ...gift,
+                            captureSuggestionImage:
+                              Boolean(gift.suggestionUrl) && !gift.imageKey && !gift.suggestionImageKey,
+                          })
+                        } aria-label={`Editar ${gift.name}`} className="h-9 shrink-0 gap-1.5 rounded-full border-[#d7c6bb] bg-white px-3"><Edit3 className="size-4" /><span>Editar</span></Button>
                       </div>
                       {reservation && (
                         <div className="mt-4 rounded-2xl bg-[#f8f3ef] p-4">
@@ -665,6 +672,10 @@ function OrganizerGiftCardImage({ gift }: { gift: GiftItem }) {
     return <img key={gift.imageKey} src={`/api/gift-images/${encodeURIComponent(gift.imageKey)}`} alt={`Imagem de ${gift.name}`} className="h-52 w-full object-contain bg-[#f7eee7]" />;
   }
 
+  if (gift.suggestionImageKey) {
+    return <img key={gift.suggestionImageKey} src={`/api/gift-images/${encodeURIComponent(gift.suggestionImageKey)}`} alt={`Imagem do anúncio de ${gift.name}`} className="h-52 w-full object-contain bg-[#f7eee7]" />;
+  }
+
   if (gift.suggestionUrl && !suggestionFailed) {
     return (
       <img
@@ -758,7 +769,7 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
   }, [draft.suggestionUrl]);
 
   const suggestionPreviewUrl =
-    !draft.imageKey && draft.suggestionUrl?.trim() && !suggestionPreviewFailed
+    !draft.imageKey && !draft.suggestionImageKey && draft.suggestionUrl?.trim() && !suggestionPreviewFailed
       ? `/api/product-image?url=${encodeURIComponent(draft.suggestionUrl.trim())}`
       : null;
 
@@ -792,7 +803,11 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
 
   async function removeImage() {
     const currentKey = draft.imageKey;
-    onChange({ ...draft, imageKey: undefined, captureSuggestionImage: false });
+    onChange({
+      ...draft,
+      imageKey: undefined,
+      captureSuggestionImage: Boolean(draft.suggestionUrl?.trim()) && !draft.suggestionImageKey,
+    });
     await discardTemporaryImage(currentKey);
   }
 
@@ -818,6 +833,22 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
                 <div className="flex gap-2 p-3">
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d7c6bb] bg-white px-3 py-2 text-xs font-bold"><ImagePlus className="size-3.5" /> {processingImage ? "Enviando…" : "Trocar"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={processingImage} onChange={(event) => void chooseImage(event.target.files?.[0])} /></label>
                   <Button type="button" variant="ghost" disabled={processingImage} onClick={() => void removeImage()} className="h-8 rounded-full px-3 text-xs text-red-700 hover:bg-red-50">Remover</Button>
+                </div>
+              </div>
+            ) : draft.suggestionImageKey ? (
+              <div>
+                <div className="relative">
+                  <img
+                    key={draft.suggestionImageKey}
+                    src={`/api/gift-images/${encodeURIComponent(draft.suggestionImageKey)}`}
+                    alt="Imagem capturada do anúncio"
+                    className="h-48 w-full object-contain bg-[#f7eee7]"
+                  />
+                  <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-[#6b4a18] shadow-sm">Imagem do link</span>
+                </div>
+                <div className="p-3">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d7c6bb] bg-white px-3 py-2 text-xs font-bold"><ImagePlus className="size-3.5" /> {processingImage ? "Enviando…" : "Usar foto manual"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={processingImage} onChange={(event) => void chooseImage(event.target.files?.[0])} /></label>
+                  <p className="mt-2 text-[11px] leading-4 text-[#806e72]">Imagem capturada automaticamente do link. Uma foto manual sempre terá prioridade.</p>
                 </div>
               </div>
             ) : suggestionPreviewUrl ? (
@@ -865,7 +896,8 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
                   onChange({
                     ...draft,
                     suggestionUrl: nextValue || undefined,
-                    captureSuggestionImage: false,
+                    suggestionImageKey: undefined,
+                    captureSuggestionImage: Boolean(nextValue.trim()),
                   });
                 }}
                 maxLength={1000}

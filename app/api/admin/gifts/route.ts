@@ -23,6 +23,7 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
   const priceHint = clean(body.priceHint, 100);
   const icon = clean(body.icon, 30) as GiftIcon;
   const imageKey = typeof body.imageKey === "string" ? body.imageKey.trim() : "";
+  const suggestionImageKey = typeof body.suggestionImageKey === "string" ? body.suggestionImageKey.trim() : "";
   const suggestionUrlInput = clean(body.suggestionUrl, 1000);
   const order = Number(body.order);
   const captureSuggestionImage = body.captureSuggestionImage === true;
@@ -30,8 +31,12 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
   if (requireId && !id) return { error: "Item inválido." } as const;
   if (name.length < 2) return { error: "Informe o nome do presente." } as const;
   if (!GIFT_ICONS.includes(icon)) return { error: "Ícone inválido." } as const;
-  if (imageKey && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(imageKey)) {
+  const imageKeyPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (imageKey && !imageKeyPattern.test(imageKey)) {
     return { error: "A referência da imagem do presente é inválida." } as const;
+  }
+  if (suggestionImageKey && !imageKeyPattern.test(suggestionImageKey)) {
+    return { error: "A referência da imagem automática do presente é inválida." } as const;
   }
 
   let suggestionUrl: string | undefined;
@@ -51,7 +56,10 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
   }
 
   return {
-    captureSuggestionImage: captureSuggestionImage && Boolean(suggestionUrl),
+    captureSuggestionImage:
+      Boolean(suggestionUrl) &&
+      !imageKey &&
+      (captureSuggestionImage || !suggestionImageKey),
     gift: {
       ...(requireId ? { id } : {}),
       name,
@@ -59,6 +67,7 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
       priceHint,
       icon,
       imageKey: imageKey || undefined,
+      suggestionImageKey: suggestionImageKey || undefined,
       suggestionUrl,
       order: Number.isFinite(order) ? Math.max(1, Math.round(order)) : 1,
     },
@@ -73,15 +82,14 @@ async function captureSuggestionImageIfRequested<T extends Omit<GiftItem, "id"> 
   gift: T,
   shouldCapture: boolean,
 ): Promise<{ gift: T; capturedImageKey?: string; imageCaptured: boolean; imageCaptureWarning?: string }> {
-  // Foto enviada manualmente sempre tem prioridade. A captura automática nunca pode substituí-la.
   if (!shouldCapture || !gift.suggestionUrl || gift.imageKey) return { gift, imageCaptured: false };
 
   try {
     const captured = await captureProductImageFromUrl(gift.suggestionUrl);
-    const imageKey = await saveGiftImage(captured.blob);
+    const suggestionImageKey = await saveGiftImage(captured.blob);
     return {
-      gift: { ...gift, imageKey } as T,
-      capturedImageKey: imageKey,
+      gift: { ...gift, suggestionImageKey } as T,
+      capturedImageKey: suggestionImageKey,
       imageCaptured: true,
     };
   } catch (error) {
