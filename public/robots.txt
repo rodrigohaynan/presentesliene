@@ -1,0 +1,3 @@
+User-agent: *
+Disallow: /organizador
+Disallow: /api/admin/

@@ -15,7 +15,7 @@ export default function SurprisePage() {
   return (
     <main className="min-h-screen bg-[#4b1725] px-5 py-8 text-[#fff8f0] sm:px-8">
       <div className="mx-auto max-w-3xl">
-        <a href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-[#efd9c7] hover:text-white hover:underline"><ArrowLeft className="size-4" /> Voltar para a lista</a>
+        <a href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-[#efd9c7] hover:text-white hover:underline"><ArrowLeft className="size-4" /> Voltar ao convite</a>
         <section className="mt-14 rounded-[2.2rem] border border-white/15 bg-white/[0.07] p-7 text-center shadow-2xl backdrop-blur sm:p-12">
           {!data ? <p className="text-[#ead5d9]">Preparando a surpresa…</p> : !data.unlocked ? (
             <>

@@ -1,84 +1,457 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { ArrowLeft, LockKeyhole, Mail, RefreshCw, UserRound } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  Baby,
+  CalendarClock,
+  CheckCircle2,
+  Edit3,
+  Gift,
+  KeyRound,
+  LockKeyhole,
+  LogOut,
+  MapPin,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+  UserRound,
+  UsersRound,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Toaster } from "@/components/ui/sonner";
+import {
+  GIFT_ICONS,
+  type GiftIcon,
+  type GiftItem,
+  type GiftReservation,
+  type PartyConfig,
+  type RsvpSubmission,
+} from "@/lib/party-data";
 
-type Reservation = { id: string; giftName: string; guestName: string; guestEmail: string; reservedAt: string };
+type DashboardData = {
+  party: PartyConfig;
+  gifts: GiftItem[];
+  reservations: GiftReservation[];
+  rsvps: RsvpSubmission[];
+};
+
+type Tab = "resumo" | "presencas" | "presentes" | "festa";
+
+type GiftDraft = Omit<GiftItem, "id"> & { id?: string };
+
+const emptyGift = (order = 1): GiftDraft => ({
+  name: "",
+  description: "",
+  priceHint: "",
+  icon: "gift",
+  order,
+});
+
+const iconLabels: Record<GiftIcon, string> = {
+  book: "Livro",
+  flower: "Beleza",
+  gem: "Joia",
+  gift: "Presente",
+  heart: "Coração",
+  map: "Passeio",
+  "shopping-bag": "Bolsa/Compras",
+  sparkles: "Moda",
+  star: "Estrela",
+  ticket: "Ingresso",
+  utensils: "Gastronomia",
+};
 
 export default function OrganizerPage() {
-  const [code, setCode] = useState("");
-  const [reservations, setReservations] = useState<Reservation[] | null>(null);
-  const [total, setTotal] = useState(0);
-  const [error, setError] = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [configured, setConfigured] = useState(true);
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [tab, setTab] = useState<Tab>("resumo");
+  const [partyDraft, setPartyDraft] = useState<PartyConfig | null>(null);
+  const [savingParty, setSavingParty] = useState(false);
+  const [editingGift, setEditingGift] = useState<GiftDraft | null>(null);
+  const [savingGift, setSavingGift] = useState(false);
 
-  async function openPanel(event?: FormEvent) {
-    event?.preventDefault();
+  const loadDashboard = useCallback(async () => {
     setLoading(true);
-    setError("");
     try {
-      const response = await fetch("/api/organizador", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = (await response.json()) as { reservations?: Reservation[]; total?: number; error?: string };
-      if (!response.ok || !data.reservations) throw new Error(data.error ?? "Não foi possível abrir.");
-      setReservations(data.reservations);
-      setTotal(data.total ?? 0);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Tente novamente.");
+      const response = await fetch("/api/admin/dashboard", { cache: "no-store" });
+      if (response.status === 401) {
+        setAuthenticated(false);
+        setData(null);
+        return;
+      }
+      const result = (await response.json()) as DashboardData & { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível carregar o painel.");
+      setData(result);
+      setPartyDraft(result.party);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível carregar o painel.");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/admin/session", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((result: { authenticated: boolean; configured: boolean }) => {
+        setConfigured(result.configured);
+        setAuthenticated(result.authenticated);
+        if (result.authenticated) void loadDashboard();
+      })
+      .finally(() => setAuthChecked(true));
+  }, [loadDashboard]);
+
+  const reservationByGift = useMemo(() => new Map((data?.reservations ?? []).map((reservation) => [reservation.giftId, reservation])), [data?.reservations]);
+  const attendance = useMemo(() => {
+    const attendees = (data?.rsvps ?? []).flatMap((rsvp) => rsvp.attendees);
+    return {
+      total: attendees.length,
+      adults: attendees.filter((item) => item.category === "adult").length,
+      children: attendees.filter((item) => item.category === "child").length,
+    };
+  }, [data?.rsvps]);
+
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoggingIn(true);
+    setLoginError("");
+    try {
+      const response = await fetch("/api/admin/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível entrar.");
+      setAuthenticated(true);
+      setPassword("");
+      await loadDashboard();
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "Tente novamente.");
+    } finally {
+      setLoggingIn(false);
+    }
+  }
+
+  async function logout() {
+    await fetch("/api/admin/session", { method: "DELETE" });
+    setAuthenticated(false);
+    setData(null);
+  }
+
+  async function saveParty(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!partyDraft || savingParty) return;
+    setSavingParty(true);
+    try {
+      const response = await fetch("/api/admin/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(partyDraft),
+      });
+      const result = (await response.json()) as { party?: PartyConfig; error?: string };
+      if (!response.ok || !result.party) throw new Error(result.error ?? "Não foi possível salvar.");
+      setData((current) => current ? { ...current, party: result.party! } : current);
+      setPartyDraft(result.party);
+      toast.success("Dados da festa atualizados.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar.");
+    } finally {
+      setSavingParty(false);
+    }
+  }
+
+  async function saveGift(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingGift || savingGift) return;
+    setSavingGift(true);
+    try {
+      const response = await fetch("/api/admin/gifts", {
+        method: editingGift.id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingGift),
+      });
+      const result = (await response.json()) as { gift?: GiftItem; error?: string };
+      if (!response.ok || !result.gift) throw new Error(result.error ?? "Não foi possível salvar o presente.");
+      toast.success(editingGift.id ? "Presente atualizado." : "Presente adicionado.");
+      setEditingGift(null);
+      await loadDashboard();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar o presente.");
+    } finally {
+      setSavingGift(false);
+    }
+  }
+
+  async function deleteGiftItem(gift: GiftItem) {
+    if (!window.confirm(`Excluir “${gift.name}” da lista?`)) return;
+    try {
+      const response = await fetch(`/api/admin/gifts?id=${encodeURIComponent(gift.id)}`, { method: "DELETE" });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível excluir.");
+      toast.success("Presente excluído.");
+      await loadDashboard();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível excluir.");
+    }
+  }
+
+  async function releaseReservation(gift: GiftItem) {
+    if (!window.confirm(`Liberar novamente o presente “${gift.name}”? A reserva atual será removida.`)) return;
+    try {
+      const response = await fetch("/api/admin/gifts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: gift.id, action: "release" }),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível liberar.");
+      toast.success("Presente liberado novamente.");
+      await loadDashboard();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível liberar.");
+    }
+  }
+
+  if (!authChecked) {
+    return <main className="grid min-h-screen place-items-center bg-[#fbf7f1] text-[#391a22]"><RefreshCw className="size-7 animate-spin text-[#7d1f37]" /></main>;
+  }
+
+  if (!authenticated) {
+    return (
+      <main className="min-h-screen bg-[#fbf7f1] px-5 py-8 text-[#391a22] sm:px-8">
+        <div className="mx-auto max-w-4xl">
+          <a href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-[#7d1f37] hover:underline"><ArrowLeft className="size-4" /> Voltar ao convite</a>
+          <section className="mt-12 max-w-lg rounded-[2rem] border border-[#dfd0c6] bg-white p-6 shadow-sm sm:p-8">
+            <div className="grid size-12 place-items-center rounded-2xl bg-[#f4e7e0] text-[#7d1f37]"><LockKeyhole className="size-5" /></div>
+            <p className="mt-6 text-sm font-bold uppercase tracking-[0.17em] text-[#9b722c]">Acesso reservado</p>
+            <h1 className="mt-2 font-serif text-4xl font-semibold">Admin da festa</h1>
+            <p className="mt-3 text-base leading-7 text-[#725f63]">Somente quem possui a senha definida no Netlify consegue acessar confirmações, reservas e edição dos presentes.</p>
+
+            {!configured ? (
+              <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+                <p className="font-bold">Falta configurar a senha do admin.</p>
+                <p className="mt-1">No Netlify, crie a variável de ambiente <strong>ADMIN_PASSWORD</strong> com uma senha forte de pelo menos 8 caracteres e faça um novo deploy.</p>
+              </div>
+            ) : (
+              <form onSubmit={login} className="mt-7">
+                <label htmlFor="admin-password" className="text-sm font-semibold">Senha do administrador</label>
+                <Input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" className="mt-2 h-11 rounded-xl" />
+                {loginError && <p className="mt-3 text-sm font-medium text-red-700">{loginError}</p>}
+                <Button type="submit" disabled={loggingIn} className="mt-5 h-11 rounded-full bg-[#7d1f37] px-6 text-white hover:bg-[#64172b]"><KeyRound className="size-4" /> {loggingIn ? "Entrando…" : "Entrar no admin"}</Button>
+              </form>
+            )}
+          </section>
+        </div>
+        <Toaster richColors closeButton position="top-center" />
+      </main>
+    );
   }
 
   return (
-    <main className="min-h-screen bg-[#fbf7f1] px-5 py-8 text-[#391a22] sm:px-8">
-      <div className="mx-auto max-w-4xl">
-        <a href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-[#7d1f37] hover:underline"><ArrowLeft className="size-4" /> Voltar para a lista</a>
-        <header className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <main className="min-h-screen bg-[#f7f2ed] text-[#391a22]">
+      <header className="sticky top-0 z-20 border-b border-[#dfd0c6] bg-[#fbf7f1]/95 px-5 py-4 backdrop-blur sm:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <div>
-            <p className="text-sm font-bold uppercase tracking-[0.17em] text-[#9b722c]">Acesso reservado</p>
-            <h1 className="mt-2 font-serif text-4xl font-semibold">Área do organizador</h1>
-            <p className="mt-2 text-base text-[#725f63]">Acompanhe os presentes escolhidos e os dados dos convidados.</p>
+            <p className="text-xs font-bold uppercase tracking-[0.17em] text-[#9b722c]">Painel privado</p>
+            <h1 className="font-serif text-2xl font-semibold">Admin • Liene 31</h1>
           </div>
-          {reservations && <Button type="button" variant="outline" onClick={() => void openPanel()} disabled={loading} className="rounded-full border-[#cdb8ab] bg-white"><RefreshCw className={loading ? "animate-spin" : ""} /> Atualizar</Button>}
-        </header>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => void loadDashboard()} disabled={loading} className="rounded-full border-[#cdb8ab] bg-white"><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} /><span className="hidden sm:inline">Atualizar</span></Button>
+            <Button type="button" variant="outline" onClick={() => void logout()} className="rounded-full border-[#cdb8ab] bg-white"><LogOut className="size-4" /><span className="hidden sm:inline">Sair</span></Button>
+          </div>
+        </div>
+      </header>
 
-        {!reservations ? (
-          <form onSubmit={openPanel} className="mt-10 max-w-lg rounded-[2rem] border border-[#dfd0c6] bg-white p-6 shadow-sm sm:p-8">
-            <div className="mb-5 grid size-12 place-items-center rounded-2xl bg-[#f4e7e0] text-[#7d1f37]"><LockKeyhole className="size-5" /></div>
-            <label htmlFor="access-code" className="text-sm font-semibold">Código do organizador</label>
-            <Input id="access-code" type="password" value={code} onChange={(event) => setCode(event.target.value)} required autoComplete="current-password" className="mt-2 h-11 rounded-xl" />
-            {error && <p className="mt-3 text-sm font-medium text-red-700">{error}</p>}
-            <Button type="submit" disabled={loading} className="mt-5 h-11 rounded-full bg-[#7d1f37] px-6 text-white hover:bg-[#64172b]">{loading ? "Verificando…" : "Entrar"}</Button>
-          </form>
-        ) : (
-          <section className="mt-10">
-            <div className="mb-5 rounded-2xl border border-[#dfd0c6] bg-white p-5">
-              <p className="text-sm text-[#806e72]">Andamento da lista</p>
-              <p className="mt-1 font-serif text-3xl font-semibold">{reservations.length} de {total} presentes escolhidos</p>
+      <div className="mx-auto max-w-7xl px-5 py-7 sm:px-8 lg:px-10">
+        <a href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-[#7d1f37] hover:underline"><ArrowLeft className="size-4" /> Ver convite público</a>
+
+        <nav className="mt-6 flex gap-2 overflow-x-auto pb-2">
+          {([
+            ["resumo", "Resumo"],
+            ["presencas", "Presenças"],
+            ["presentes", "Presentes"],
+            ["festa", "Dados da festa"],
+          ] as [Tab, string][]).map(([value, label]) => (
+            <button key={value} type="button" onClick={() => setTab(value)} className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-bold transition ${tab === value ? "bg-[#7d1f37] text-white" : "border border-[#d7c6bb] bg-white text-[#654f54] hover:bg-[#fffaf5]"}`}>{label}</button>
+          ))}
+        </nav>
+
+        {!data ? (
+          <div className="mt-10 grid min-h-60 place-items-center rounded-[2rem] border border-[#dfd0c6] bg-white"><RefreshCw className="size-7 animate-spin text-[#7d1f37]" /></div>
+        ) : tab === "resumo" ? (
+          <section className="mt-7">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard icon={<UsersRound className="size-5" />} label="Pessoas confirmadas" value={attendance.total} />
+              <StatCard icon={<UserRound className="size-5" />} label="Adultos" value={attendance.adults} />
+              <StatCard icon={<Baby className="size-5" />} label="Crianças" value={attendance.children} />
+              <StatCard icon={<Gift className="size-5" />} label="Presentes reservados" value={`${data.reservations.length}/${data.gifts.length}`} />
             </div>
-            {reservations.length === 0 ? (
-              <div className="rounded-2xl border border-[#dfd0c6] bg-white p-8 text-center text-[#725f63]">Nenhum presente foi reservado ainda.</div>
+
+            <div className="mt-6 grid gap-5 lg:grid-cols-2">
+              <article className="rounded-[1.7rem] border border-[#dfd0c6] bg-white p-5 shadow-sm sm:p-6">
+                <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold uppercase tracking-[0.13em] text-[#9b722c]">Últimas confirmações</p><h2 className="mt-1 font-serif text-2xl font-semibold">Presenças</h2></div><UsersRound className="size-6 text-[#7d1f37]" /></div>
+                <div className="mt-5 space-y-3">
+                  {data.rsvps.length === 0 ? <p className="text-sm text-[#806e72]">Ainda não há confirmações.</p> : data.rsvps.slice(0, 5).map((rsvp) => (
+                    <div key={rsvp.id} className="rounded-2xl bg-[#faf5f1] p-4">
+                      <div className="flex items-center justify-between gap-3"><p className="font-semibold">{rsvp.contactName}</p><span className="text-xs text-[#8f7c80]">{rsvp.attendees.length} pessoa(s)</span></div>
+                      <p className="mt-1 text-sm text-[#806e72]">{rsvp.whatsapp}</p>
+                    </div>
+                  ))}
+                </div>
+              </article>
+
+              <article className="rounded-[1.7rem] border border-[#dfd0c6] bg-white p-5 shadow-sm sm:p-6">
+                <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold uppercase tracking-[0.13em] text-[#9b722c]">Últimas escolhas</p><h2 className="mt-1 font-serif text-2xl font-semibold">Presentes</h2></div><Gift className="size-6 text-[#7d1f37]" /></div>
+                <div className="mt-5 space-y-3">
+                  {data.reservations.length === 0 ? <p className="text-sm text-[#806e72]">Nenhum presente reservado ainda.</p> : data.reservations.slice(0, 5).map((reservation) => (
+                    <div key={reservation.id} className="rounded-2xl bg-[#faf5f1] p-4">
+                      <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9b722c]">{reservation.giftName}</p>
+                      <p className="mt-1 font-semibold">{reservation.guestName}</p>
+                      {reservation.guestContact && <p className="mt-1 text-sm text-[#806e72]">{reservation.guestContact}</p>}
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </div>
+          </section>
+        ) : tab === "presencas" ? (
+          <section className="mt-7">
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Lista privada</p><h2 className="mt-1 font-serif text-3xl font-semibold">Confirmações de presença</h2></div>
+              <div className="flex gap-2 text-sm"><span className="rounded-full bg-white px-4 py-2 font-semibold">{attendance.adults} adultos</span><span className="rounded-full bg-white px-4 py-2 font-semibold">{attendance.children} crianças</span></div>
+            </div>
+            {data.rsvps.length === 0 ? (
+              <div className="rounded-[1.7rem] border border-[#dfd0c6] bg-white p-10 text-center text-[#806e72]">Ainda não há confirmações de presença.</div>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {reservations.map((reservation) => (
-                  <article key={reservation.id} className="rounded-2xl border border-[#dfd0c6] bg-white p-5 shadow-sm">
-                    <p className="text-sm font-semibold uppercase tracking-[0.12em] text-[#9b722c]">{reservation.giftName}</p>
-                    <p className="mt-4 flex items-center gap-2 font-serif text-xl font-semibold"><UserRound className="size-4 text-[#7d1f37]" /> {reservation.guestName}</p>
-                    <a href={`mailto:${reservation.guestEmail}`} className="mt-2 flex items-center gap-2 break-all text-sm text-[#725f63] hover:text-[#7d1f37] hover:underline"><Mail className="size-4 shrink-0" /> {reservation.guestEmail}</a>
-                    <p className="mt-4 text-xs text-[#9a878b]">Reservado em {new Date(reservation.reservedAt).toLocaleString("pt-BR", { timeZone: "America/Campo_Grande" })}</p>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {data.rsvps.map((rsvp) => (
+                  <article key={rsvp.id} className="rounded-[1.7rem] border border-[#dfd0c6] bg-white p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-4"><div><p className="font-serif text-xl font-semibold">{rsvp.contactName}</p><p className="mt-1 text-sm text-[#806e72]">WhatsApp: {rsvp.whatsapp}</p></div><span className="rounded-full bg-[#f3ead8] px-3 py-1 text-xs font-bold text-[#6b4a18]">{rsvp.attendees.length} pessoa(s)</span></div>
+                    <div className="mt-4 space-y-2 border-t border-[#eee4de] pt-4">
+                      {rsvp.attendees.map((attendee, index) => (
+                        <div key={`${rsvp.id}-${index}`} className="flex items-center justify-between gap-3 rounded-xl bg-[#faf5f1] px-3 py-2.5">
+                          <span className="font-medium">{attendee.name}</span>
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${attendee.category === "child" ? "bg-[#f4e7e0] text-[#7d1f37]" : "bg-[#eee8dc] text-[#6b5634]"}`}>{attendee.category === "child" ? <Baby className="size-3.5" /> : <UserRound className="size-3.5" />}{attendee.category === "child" ? "Criança" : "Adulto"}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-4 text-xs text-[#9a878b]">Confirmado em {formatDateTime(rsvp.createdAt)}</p>
                   </article>
                 ))}
               </div>
             )}
           </section>
+        ) : tab === "presentes" ? (
+          <section className="mt-7">
+            <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Gerenciamento</p><h2 className="mt-1 font-serif text-3xl font-semibold">Lista de presentes</h2><p className="mt-2 text-sm text-[#806e72]">Você pode adicionar, editar, excluir e liberar uma reserva feita por engano.</p></div>
+              <Button type="button" onClick={() => setEditingGift(emptyGift(data.gifts.length + 1))} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><Plus className="size-4" /> Adicionar presente</Button>
+            </div>
+
+            {editingGift && (
+              <GiftEditor draft={editingGift} onChange={setEditingGift} onCancel={() => setEditingGift(null)} onSubmit={saveGift} saving={savingGift} />
+            )}
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
+              {data.gifts.map((gift) => {
+                const reservation = reservationByGift.get(gift.id);
+                return (
+                  <article key={gift.id} className="rounded-[1.6rem] border border-[#dfd0c6] bg-white p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p></div>
+                      <Button type="button" variant="outline" onClick={() => setEditingGift({ ...gift })} className="shrink-0 rounded-full border-[#d7c6bb] bg-white"><Edit3 className="size-4" /></Button>
+                    </div>
+                    {reservation && (
+                      <div className="mt-4 rounded-2xl bg-[#f8f3ef] p-4">
+                        <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9b722c]">Escolhido por</p>
+                        <p className="mt-1 font-semibold">{reservation.guestName}</p>
+                        {reservation.guestContact && <p className="mt-1 text-sm text-[#806e72]">{reservation.guestContact}</p>}
+                        <Button type="button" variant="outline" onClick={() => void releaseReservation(gift)} className="mt-3 h-9 rounded-full border-[#d7c6bb] bg-white text-xs">Liberar reserva</Button>
+                      </div>
+                    )}
+                    <div className="mt-4 flex justify-end">
+                      <Button type="button" variant="ghost" onClick={() => void deleteGiftItem(gift)} className="rounded-full text-red-700 hover:bg-red-50 hover:text-red-800"><Trash2 className="size-4" /> Excluir</Button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        ) : (
+          <section className="mt-7">
+            <div className="mb-5"><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Convite público</p><h2 className="mt-1 font-serif text-3xl font-semibold">Dados da festa</h2><p className="mt-2 text-sm text-[#806e72]">O que você salvar aqui aparece no convite sem precisar editar o código.</p></div>
+            {partyDraft && (
+              <form onSubmit={saveParty} className="max-w-4xl rounded-[1.8rem] border border-[#dfd0c6] bg-white p-5 shadow-sm sm:p-7">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Título"><Input value={partyDraft.eventTitle} onChange={(event) => setPartyDraft({ ...partyDraft, eventTitle: event.target.value })} maxLength={100} className="h-11 rounded-xl" /></Field>
+                  <Field label="Nome"><Input value={partyDraft.hostName} onChange={(event) => setPartyDraft({ ...partyDraft, hostName: event.target.value })} maxLength={80} className="h-11 rounded-xl" /></Field>
+                  <Field label="Data"><Input type="date" value={partyDraft.date} onChange={(event) => setPartyDraft({ ...partyDraft, date: event.target.value })} className="h-11 rounded-xl" /></Field>
+                  <Field label="Horário"><Input type="time" value={partyDraft.time} onChange={(event) => setPartyDraft({ ...partyDraft, time: event.target.value })} className="h-11 rounded-xl" /></Field>
+                  <Field label="Local"><Input value={partyDraft.locationName} onChange={(event) => setPartyDraft({ ...partyDraft, locationName: event.target.value })} maxLength={120} placeholder="Ex.: Salão de Festas ..." className="h-11 rounded-xl" /></Field>
+                  <Field label="Idade"><Input type="number" min={1} max={129} value={partyDraft.age} onChange={(event) => setPartyDraft({ ...partyDraft, age: Number(event.target.value) })} className="h-11 rounded-xl" /></Field>
+                  <div className="sm:col-span-2"><Field label="Endereço"><Input value={partyDraft.address} onChange={(event) => setPartyDraft({ ...partyDraft, address: event.target.value })} maxLength={220} placeholder="Rua, número, bairro, cidade" className="h-11 rounded-xl" /></Field></div>
+                  <div className="sm:col-span-2"><Field label="Link do Google Maps"><Input type="url" value={partyDraft.mapsUrl} onChange={(event) => setPartyDraft({ ...partyDraft, mapsUrl: event.target.value })} maxLength={500} placeholder="https://maps.app.goo.gl/..." className="h-11 rounded-xl" /></Field></div>
+                  <div className="sm:col-span-2"><Field label="Texto do convite"><Textarea value={partyDraft.invitationText} onChange={(event) => setPartyDraft({ ...partyDraft, invitationText: event.target.value })} maxLength={600} rows={4} className="rounded-xl" /></Field></div>
+                  <div className="sm:col-span-2"><Field label="Observação da confirmação"><Textarea value={partyDraft.rsvpNote} onChange={(event) => setPartyDraft({ ...partyDraft, rsvpNote: event.target.value })} maxLength={400} rows={3} className="rounded-xl" /></Field></div>
+                </div>
+                <Button type="submit" disabled={savingParty} className="mt-6 h-11 rounded-full bg-[#7d1f37] px-6 text-white hover:bg-[#64172b]"><Save className="size-4" /> {savingParty ? "Salvando…" : "Salvar dados da festa"}</Button>
+              </form>
+            )}
+          </section>
         )}
       </div>
+      <Toaster richColors closeButton position="top-center" />
     </main>
   );
+}
+
+function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
+  return <article className="rounded-[1.5rem] border border-[#dfd0c6] bg-white p-5 shadow-sm"><div className="grid size-10 place-items-center rounded-xl bg-[#f4e7e0] text-[#7d1f37]">{icon}</div><p className="mt-4 text-sm text-[#806e72]">{label}</p><p className="mt-1 font-serif text-3xl font-semibold">{value}</p></article>;
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="block text-sm font-semibold text-[#4d3036]">{label}<div className="mt-2">{children}</div></label>;
+}
+
+function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
+  draft: GiftDraft;
+  onChange: (draft: GiftDraft) => void;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  saving: boolean;
+}) {
+  return (
+    <form onSubmit={onSubmit} className="mb-5 rounded-[1.7rem] border-2 border-[#cdaeb6] bg-[#fffdf9] p-5 shadow-sm sm:p-6">
+      <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-[#9b722c]">{draft.id ? "Editar item" : "Novo item"}</p><h3 className="mt-1 font-serif text-2xl font-semibold">{draft.id ? draft.name : "Adicionar presente"}</h3></div><Button type="button" variant="ghost" onClick={onCancel} className="rounded-full"><X className="size-4" /></Button></div>
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <Field label="Nome do presente"><Input value={draft.name} onChange={(event) => onChange({ ...draft, name: event.target.value })} required minLength={2} maxLength={120} className="h-11 rounded-xl" /></Field>
+        <Field label="Ordem"><Input type="number" min={1} value={draft.order} onChange={(event) => onChange({ ...draft, order: Number(event.target.value) })} className="h-11 rounded-xl" /></Field>
+        <div className="sm:col-span-2"><Field label="Descrição"><Textarea value={draft.description} onChange={(event) => onChange({ ...draft, description: event.target.value })} maxLength={500} rows={3} className="rounded-xl" /></Field></div>
+        <Field label="Observação curta"><Input value={draft.priceHint} onChange={(event) => onChange({ ...draft, priceHint: event.target.value })} maxLength={100} placeholder="Ex.: Tamanho M" className="h-11 rounded-xl" /></Field>
+        <Field label="Ícone"><select value={draft.icon} onChange={(event) => onChange({ ...draft, icon: event.target.value as GiftIcon })} className="h-11 w-full rounded-xl border border-[#d8c5b8] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#a96b7b]">{GIFT_ICONS.map((icon) => <option key={icon} value={icon}>{iconLabels[icon]}</option>)}</select></Field>
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2"><Button type="submit" disabled={saving} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><CheckCircle2 className="size-4" /> {saving ? "Salvando…" : "Salvar presente"}</Button><Button type="button" variant="outline" onClick={onCancel} className="rounded-full border-[#d7c6bb] bg-white">Cancelar</Button></div>
+    </form>
+  );
+}
+
+function formatDateTime(value: string) {
+  try {
+    return new Date(value).toLocaleString("pt-BR", { timeZone: "America/Campo_Grande" });
+  } catch {
+    return value;
+  }
 }

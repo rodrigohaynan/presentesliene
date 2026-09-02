@@ -2,19 +2,15 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Lista de Presentes da Liene — 31 anos",
-  description: "Escolha um presente especial para celebrar os 31 anos da Liene.",
+  title: "Liene 31 anos — Convite, presença e presentes",
+  description: "Convite para celebrar os 31 anos da Liene, com confirmação de presença e sugestões de presentes.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR">
       <body className="antialiased">{children}</body>
