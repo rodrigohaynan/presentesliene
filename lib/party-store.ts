@@ -28,7 +28,7 @@ async function getJSON<T>(key: string): Promise<T | null> {
 async function listJSON<T>(prefix: string): Promise<T[]> {
   const { blobs } = await store().list({ prefix });
   const values = await Promise.all(blobs.map((blob) => getJSON<T>(blob.key)));
-  return values.filter((value): value is T => value !== null);
+  return values.filter((value) => value !== null) as T[];
 }
 
 export async function ensurePartyInitialized() {
