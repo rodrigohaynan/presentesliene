@@ -1,4 +1,4 @@
-import { hasAdminSession } from "@/lib/admin-auth";
+import { hasOrganizerSession } from "@/lib/admin-auth";
 import { GIFT_ICONS, type GiftIcon, type GiftItem } from "@/lib/party-data";
 import { createGift, deleteGift, releaseGiftReservation, updateGift } from "@/lib/party-store";
 
@@ -37,7 +37,7 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
 }
 
 async function authorized() {
-  return hasAdminSession();
+  return hasOrganizerSession();
 }
 
 export async function POST(request: Request) {

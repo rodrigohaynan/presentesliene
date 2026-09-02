@@ -34,7 +34,10 @@ import {
   type RsvpSubmission,
 } from "@/lib/party-data";
 
+type OrganizerRole = "admin" | "birthday";
+
 type DashboardData = {
+  role: OrganizerRole;
   party: PartyConfig;
   gifts: GiftItem[];
   reservations: GiftReservation[];
@@ -78,6 +81,8 @@ export default function OrganizerPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [configured, setConfigured] = useState(true);
+  const [birthdayConfigured, setBirthdayConfigured] = useState(false);
+  const [role, setRole] = useState<OrganizerRole | null>(null);
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
@@ -97,12 +102,14 @@ export default function OrganizerPage() {
       const response = await fetch("/api/admin/dashboard", { cache: "no-store" });
       if (response.status === 401) {
         setAuthenticated(false);
+        setRole(null);
         setData(null);
         return;
       }
       const result = (await response.json()) as DashboardData & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível carregar o painel.");
       setData(result);
+      setRole(result.role);
       setPartyDraft(result.party);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível carregar o painel.");
@@ -114,9 +121,11 @@ export default function OrganizerPage() {
   useEffect(() => {
     fetch("/api/admin/session", { cache: "no-store" })
       .then((response) => response.json())
-      .then((result: { authenticated: boolean; configured: boolean }) => {
+      .then((result: { authenticated: boolean; configured: boolean; birthdayConfigured: boolean; role: OrganizerRole | null }) => {
         setConfigured(result.configured);
+        setBirthdayConfigured(result.birthdayConfigured);
         setAuthenticated(result.authenticated);
+        setRole(result.role);
         if (result.authenticated) void loadDashboard();
       })
       .finally(() => setAuthChecked(true));
@@ -146,9 +155,10 @@ export default function OrganizerPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(result.error ?? "Não foi possível entrar.");
+      const result = (await response.json()) as { error?: string; role?: OrganizerRole };
+      if (!response.ok || !result.role) throw new Error(result.error ?? "Não foi possível entrar.");
       setAuthenticated(true);
+      setRole(result.role);
       setPassword("");
       await loadDashboard();
     } catch (error) {
@@ -161,6 +171,7 @@ export default function OrganizerPage() {
   async function logout() {
     await fetch("/api/admin/session", { method: "DELETE" });
     setAuthenticated(false);
+    setRole(null);
     setData(null);
     setEditingRsvp(null);
     setEditingGift(null);
@@ -320,20 +331,21 @@ export default function OrganizerPage() {
           <section className="mt-12 max-w-lg rounded-[2rem] border border-[#dfd0c6] bg-white p-6 shadow-sm sm:p-8">
             <div className="grid size-12 place-items-center rounded-2xl bg-[#f4e7e0] text-[#7d1f37]"><LockKeyhole className="size-5" /></div>
             <p className="mt-6 text-sm font-bold uppercase tracking-[0.17em] text-[#9b722c]">Acesso reservado</p>
-            <h1 className="mt-2 font-serif text-4xl font-semibold">Admin da festa</h1>
-            <p className="mt-3 text-base leading-7 text-[#725f63]">Somente quem possui a senha definida no Netlify consegue acessar confirmações, reservas e edição dos presentes.</p>
+            <h1 className="mt-2 font-serif text-4xl font-semibold">Painel da festa</h1>
+            <p className="mt-3 text-base leading-7 text-[#725f63]">Administrador e aniversariante acessam o mesmo painel com senhas diferentes. O aniversariante pode gerenciar a festa, mas não vê quem escolheu cada presente.</p>
 
             {!configured ? (
               <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-                <p className="font-bold">Falta configurar a senha do admin.</p>
-                <p className="mt-1">No Netlify, crie a variável de ambiente <strong>ADMIN_PASSWORD</strong> com uma senha forte de pelo menos 8 caracteres e faça um novo deploy.</p>
+                <p className="font-bold">Falta configurar uma senha de acesso.</p>
+                <p className="mt-1">No Netlify, configure <strong>ADMIN_PASSWORD</strong> e/ou <strong>ANIVERSARIANTE_PASSWORD</strong> com pelo menos 8 caracteres e faça um novo deploy.</p>
               </div>
             ) : (
               <form onSubmit={login} className="mt-7">
-                <label htmlFor="admin-password" className="text-sm font-semibold">Senha do administrador</label>
+                <label htmlFor="admin-password" className="text-sm font-semibold">Senha de acesso</label>
                 <Input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" className="mt-2 h-11 rounded-xl" />
                 {loginError && <p className="mt-3 text-sm font-medium text-red-700">{loginError}</p>}
-                <Button type="submit" disabled={loggingIn} className="mt-5 h-11 rounded-full bg-[#7d1f37] px-6 text-white hover:bg-[#64172b]"><KeyRound className="size-4" /> {loggingIn ? "Entrando…" : "Entrar no admin"}</Button>
+                <Button type="submit" disabled={loggingIn} className="mt-5 h-11 rounded-full bg-[#7d1f37] px-6 text-white hover:bg-[#64172b]"><KeyRound className="size-4" /> {loggingIn ? "Entrando…" : "Entrar"}</Button>
+                {!birthdayConfigured && <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Para criar o acesso do aniversariante, adicione <strong>ANIVERSARIANTE_PASSWORD</strong> nas variáveis do Netlify com uma senha diferente da senha do admin.</p>}
               </form>
             )}
           </section>
@@ -349,7 +361,7 @@ export default function OrganizerPage() {
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.17em] text-[#9b722c]">Painel privado</p>
-            <h1 className="font-serif text-2xl font-semibold">Admin • Liene 31</h1>
+            <h1 className="font-serif text-2xl font-semibold">{role === "birthday" ? "Aniversariante" : "Admin"} • Liene 31</h1>
           </div>
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => void loadDashboard()} disabled={loading} className="rounded-full border-[#cdb8ab] bg-white"><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} /><span className="hidden sm:inline">Atualizar</span></Button>
@@ -405,8 +417,14 @@ export default function OrganizerPage() {
                   {data.reservations.length === 0 ? <p className="text-sm text-[#806e72]">Nenhum presente reservado ainda.</p> : data.reservations.slice(0, 5).map((reservation) => (
                     <div key={reservation.id} className="rounded-2xl bg-[#faf5f1] p-4">
                       <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9b722c]">{reservation.giftName}</p>
-                      <p className="mt-1 font-semibold">{reservation.guestName}</p>
-                      {reservation.guestContact && <p className="mt-1 text-sm text-[#806e72]">{reservation.guestContact}</p>}
+                      {role === "admin" ? (
+                        <>
+                          <p className="mt-1 font-semibold">{reservation.guestName}</p>
+                          {reservation.guestContact && <p className="mt-1 text-sm text-[#806e72]">{reservation.guestContact}</p>}
+                        </>
+                      ) : (
+                        <p className="mt-1 text-sm font-semibold text-[#6f6063]">Reservado • identidade protegida</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -484,9 +502,18 @@ export default function OrganizerPage() {
                       </div>
                       {reservation && (
                         <div className="mt-4 rounded-2xl bg-[#f8f3ef] p-4">
-                          <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9b722c]">Escolhido por</p>
-                          <p className="mt-1 font-semibold">{reservation.guestName}</p>
-                          {reservation.guestContact && <p className="mt-1 text-sm text-[#806e72]">{reservation.guestContact}</p>}
+                          {role === "admin" ? (
+                            <>
+                              <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9b722c]">Escolhido por</p>
+                              <p className="mt-1 font-semibold">{reservation.guestName}</p>
+                              {reservation.guestContact && <p className="mt-1 text-sm text-[#806e72]">{reservation.guestContact}</p>}
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#9b722c]">Reserva confirmada</p>
+                              <p className="mt-1 text-sm leading-6 text-[#806e72]">Quem escolheu este presente fica oculto para o acesso do aniversariante.</p>
+                            </>
+                          )}
                           <Button type="button" variant="outline" onClick={() => void releaseReservation(gift)} className="mt-3 h-9 rounded-full border-[#d7c6bb] bg-white text-xs">Liberar reserva</Button>
                         </div>
                       )}

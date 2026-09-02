@@ -1,4 +1,4 @@
-import { hasAdminSession } from "@/lib/admin-auth";
+import { hasOrganizerSession } from "@/lib/admin-auth";
 import { deleteGiftImage, saveGiftImage } from "@/lib/party-store";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMAGE_BYTES = 1_500_000;
 
 export async function POST(request: Request) {
-  if (!(await hasAdminSession())) {
+  if (!(await hasOrganizerSession())) {
     return Response.json({ error: "Não autorizado." }, { status: 401 });
   }
 
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!(await hasAdminSession())) {
+  if (!(await hasOrganizerSession())) {
     return Response.json({ error: "Não autorizado." }, { status: 401 });
   }
 

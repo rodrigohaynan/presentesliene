@@ -1,4 +1,4 @@
-import { hasAdminSession } from "@/lib/admin-auth";
+import { hasOrganizerSession } from "@/lib/admin-auth";
 import { savePartyConfig } from "@/lib/party-store";
 import type { PartyConfig } from "@/lib/party-data";
 
@@ -8,7 +8,7 @@ const clean = (value: unknown, max: number) =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
 
 export async function PUT(request: Request) {
-  if (!(await hasAdminSession())) {
+  if (!(await hasOrganizerSession())) {
     return Response.json({ error: "Não autorizado." }, { status: 401 });
   }
 

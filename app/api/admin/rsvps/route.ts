@@ -1,4 +1,4 @@
-import { hasAdminSession } from "@/lib/admin-auth";
+import { hasOrganizerSession } from "@/lib/admin-auth";
 import { deleteRsvp, findDuplicateAttendees, updateRsvp } from "@/lib/party-store";
 import type { AttendeeCategory, RsvpAttendee } from "@/lib/party-data";
 
@@ -23,7 +23,7 @@ function parseAttendees(value: unknown): RsvpAttendee[] | null {
 }
 
 export async function PUT(request: Request) {
-  if (!(await hasAdminSession())) {
+  if (!(await hasOrganizerSession())) {
     return Response.json({ error: "Não autorizado." }, { status: 401 });
   }
 
@@ -68,7 +68,7 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  if (!(await hasAdminSession())) {
+  if (!(await hasOrganizerSession())) {
     return Response.json({ error: "Não autorizado." }, { status: 401 });
   }
 
