@@ -17,29 +17,29 @@ export async function GET() {
   return Response.json({
     authenticated: role !== null,
     role,
-    configured: isOrganizerAccessConfigured(),
+    configured: await isOrganizerAccessConfigured(),
     adminConfigured: isAdminPasswordConfigured(),
-    birthdayConfigured: isBirthdayPasswordConfigured(),
+    birthdayConfigured: await isBirthdayPasswordConfigured(),
   });
 }
 
 export async function POST(request: Request) {
-  if (!isOrganizerAccessConfigured()) {
+  if (!(await isOrganizerAccessConfigured())) {
     return Response.json(
-      { error: "Defina ADMIN_PASSWORD ou ANIVERSARIANTE_PASSWORD no Netlify antes de usar o painel." },
+      { error: "Defina ADMIN_PASSWORD no Netlify antes de usar o painel." },
       { status: 503 },
     );
   }
 
   const body = (await request.json().catch(() => ({}))) as { password?: unknown };
   const password = typeof body.password === "string" ? body.password : "";
-  const role = verifyOrganizerPassword(password);
+  const role = await verifyOrganizerPassword(password);
   if (!role) {
     return Response.json({ error: "Senha inválida." }, { status: 401 });
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(ADMIN_COOKIE_NAME, createOrganizerToken(role), adminCookieOptions());
+  cookieStore.set(ADMIN_COOKIE_NAME, await createOrganizerToken(role), adminCookieOptions());
   return Response.json({ authenticated: true, role });
 }
 

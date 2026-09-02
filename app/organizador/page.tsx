@@ -92,6 +92,9 @@ export default function OrganizerPage() {
   const [tab, setTab] = useState<Tab>("resumo");
   const [partyDraft, setPartyDraft] = useState<PartyConfig | null>(null);
   const [savingParty, setSavingParty] = useState(false);
+  const [birthdayPassword, setBirthdayPassword] = useState("");
+  const [birthdayPasswordConfirm, setBirthdayPasswordConfirm] = useState("");
+  const [savingBirthdayPassword, setSavingBirthdayPassword] = useState(false);
   const [editingGift, setEditingGift] = useState<GiftDraft | null>(null);
   const [savingGift, setSavingGift] = useState(false);
   const [editingRsvp, setEditingRsvp] = useState<RsvpSubmission | null>(null);
@@ -197,6 +200,38 @@ export default function OrganizerPage() {
       toast.error(error instanceof Error ? error.message : "Não foi possível salvar.");
     } finally {
       setSavingParty(false);
+    }
+  }
+
+  async function saveBirthdayAccess(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (role !== "admin" || savingBirthdayPassword) return;
+    if (birthdayPassword.length < 8) {
+      toast.error("A senha do aniversariante deve ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (birthdayPassword !== birthdayPasswordConfirm) {
+      toast.error("As senhas do aniversariante não coincidem.");
+      return;
+    }
+
+    setSavingBirthdayPassword(true);
+    try {
+      const response = await fetch("/api/admin/birthday-password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: birthdayPassword, confirmPassword: birthdayPasswordConfirm }),
+      });
+      const result = (await response.json()) as { error?: string; configured?: boolean };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível salvar a senha.");
+      setBirthdayConfigured(true);
+      setBirthdayPassword("");
+      setBirthdayPasswordConfirm("");
+      toast.success("Senha do aniversariante criada/atualizada.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar a senha.");
+    } finally {
+      setSavingBirthdayPassword(false);
     }
   }
 
@@ -338,7 +373,7 @@ export default function OrganizerPage() {
             {!configured ? (
               <div className="mt-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
                 <p className="font-bold">Falta configurar uma senha de acesso.</p>
-                <p className="mt-1">No Netlify, configure <strong>ADMIN_PASSWORD</strong> e/ou <strong>ANIVERSARIANTE_PASSWORD</strong> com pelo menos 8 caracteres e faça um novo deploy.</p>
+                <p className="mt-1">Configure <strong>ADMIN_PASSWORD</strong> no Netlify para liberar o administrador. Depois, o próprio administrador poderá criar a senha do aniversariante pelo painel.</p>
               </div>
             ) : (
               <form onSubmit={login} className="mt-7">
@@ -346,7 +381,7 @@ export default function OrganizerPage() {
                 <Input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" className="mt-2 h-11 rounded-xl" />
                 {loginError && <p className="mt-3 text-sm font-medium text-red-700">{loginError}</p>}
                 <Button type="submit" disabled={loggingIn} className="mt-5 h-11 rounded-full bg-[#7d1f37] px-6 text-white hover:bg-[#64172b]"><KeyRound className="size-4" /> {loggingIn ? "Entrando…" : "Entrar"}</Button>
-                {!birthdayConfigured && <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Para criar o acesso do aniversariante, adicione <strong>ANIVERSARIANTE_PASSWORD</strong> nas variáveis do Netlify com uma senha diferente da senha do admin.</p>}
+                {!birthdayConfigured && <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">Ainda não existe senha ativa para o aniversariante. Entre como <strong>Administrador</strong> e crie a senha em <strong>Dados da festa → Acesso do aniversariante</strong>.</p>}
               </form>
             )}
           </section>
@@ -531,21 +566,42 @@ export default function OrganizerPage() {
           <section className="mt-7">
             <div className="mb-5"><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Convite público</p><h2 className="mt-1 font-serif text-3xl font-semibold">Dados da festa</h2><p className="mt-2 text-sm text-[#806e72]">O que você salvar aqui aparece no convite sem precisar editar o código.</p></div>
             {partyDraft && (
-              <form onSubmit={saveParty} className="max-w-4xl rounded-[1.8rem] border border-[#dfd0c6] bg-white p-5 shadow-sm sm:p-7">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Título"><Input value={partyDraft.eventTitle} onChange={(event) => setPartyDraft({ ...partyDraft, eventTitle: event.target.value })} maxLength={100} className="h-11 rounded-xl" /></Field>
-                  <Field label="Nome"><Input value={partyDraft.hostName} onChange={(event) => setPartyDraft({ ...partyDraft, hostName: event.target.value })} maxLength={80} className="h-11 rounded-xl" /></Field>
-                  <Field label="Data"><Input type="date" value={partyDraft.date} onChange={(event) => setPartyDraft({ ...partyDraft, date: event.target.value })} className="h-11 rounded-xl" /></Field>
-                  <Field label="Horário"><Input type="time" value={partyDraft.time} onChange={(event) => setPartyDraft({ ...partyDraft, time: event.target.value })} className="h-11 rounded-xl" /></Field>
-                  <Field label="Local"><Input value={partyDraft.locationName} onChange={(event) => setPartyDraft({ ...partyDraft, locationName: event.target.value })} maxLength={120} placeholder="Ex.: Salão de Festas ..." className="h-11 rounded-xl" /></Field>
-                  <Field label="Idade"><Input type="number" min={1} max={129} value={partyDraft.age} onChange={(event) => setPartyDraft({ ...partyDraft, age: Number(event.target.value) })} className="h-11 rounded-xl" /></Field>
-                  <div className="sm:col-span-2"><Field label="Endereço"><Input value={partyDraft.address} onChange={(event) => setPartyDraft({ ...partyDraft, address: event.target.value })} maxLength={220} placeholder="Rua, número, bairro, cidade" className="h-11 rounded-xl" /></Field></div>
-                  <div className="sm:col-span-2"><Field label="Link do Google Maps"><Input type="url" value={partyDraft.mapsUrl} onChange={(event) => setPartyDraft({ ...partyDraft, mapsUrl: event.target.value })} maxLength={500} placeholder="https://maps.app.goo.gl/..." className="h-11 rounded-xl" /></Field></div>
-                  <div className="sm:col-span-2"><Field label="Texto do convite"><Textarea value={partyDraft.invitationText} onChange={(event) => setPartyDraft({ ...partyDraft, invitationText: event.target.value })} maxLength={600} rows={4} className="rounded-xl" /></Field></div>
-                  <div className="sm:col-span-2"><Field label="Observação da confirmação"><Textarea value={partyDraft.rsvpNote} onChange={(event) => setPartyDraft({ ...partyDraft, rsvpNote: event.target.value })} maxLength={400} rows={3} className="rounded-xl" /></Field></div>
-                </div>
-                <Button type="submit" disabled={savingParty} className="mt-6 h-11 rounded-full bg-[#7d1f37] px-6 text-white hover:bg-[#64172b]"><Save className="size-4" /> {savingParty ? "Salvando…" : "Salvar dados da festa"}</Button>
-              </form>
+              <div className="space-y-5">
+                <form onSubmit={saveParty} className="max-w-4xl rounded-[1.8rem] border border-[#dfd0c6] bg-white p-5 shadow-sm sm:p-7">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Título"><Input value={partyDraft.eventTitle} onChange={(event) => setPartyDraft({ ...partyDraft, eventTitle: event.target.value })} maxLength={100} className="h-11 rounded-xl" /></Field>
+                    <Field label="Nome"><Input value={partyDraft.hostName} onChange={(event) => setPartyDraft({ ...partyDraft, hostName: event.target.value })} maxLength={80} className="h-11 rounded-xl" /></Field>
+                    <Field label="Data"><Input type="date" value={partyDraft.date} onChange={(event) => setPartyDraft({ ...partyDraft, date: event.target.value })} className="h-11 rounded-xl" /></Field>
+                    <Field label="Horário"><Input type="time" value={partyDraft.time} onChange={(event) => setPartyDraft({ ...partyDraft, time: event.target.value })} className="h-11 rounded-xl" /></Field>
+                    <Field label="Local"><Input value={partyDraft.locationName} onChange={(event) => setPartyDraft({ ...partyDraft, locationName: event.target.value })} maxLength={120} placeholder="Ex.: Salão de Festas ..." className="h-11 rounded-xl" /></Field>
+                    <Field label="Idade"><Input type="number" min={1} max={129} value={partyDraft.age} onChange={(event) => setPartyDraft({ ...partyDraft, age: Number(event.target.value) })} className="h-11 rounded-xl" /></Field>
+                    <div className="sm:col-span-2"><Field label="Endereço"><Input value={partyDraft.address} onChange={(event) => setPartyDraft({ ...partyDraft, address: event.target.value })} maxLength={220} placeholder="Rua, número, bairro, cidade" className="h-11 rounded-xl" /></Field></div>
+                    <div className="sm:col-span-2"><Field label="Link do Google Maps"><Input type="url" value={partyDraft.mapsUrl} onChange={(event) => setPartyDraft({ ...partyDraft, mapsUrl: event.target.value })} maxLength={500} placeholder="https://maps.app.goo.gl/..." className="h-11 rounded-xl" /></Field></div>
+                    <div className="sm:col-span-2"><Field label="Texto do convite"><Textarea value={partyDraft.invitationText} onChange={(event) => setPartyDraft({ ...partyDraft, invitationText: event.target.value })} maxLength={600} rows={4} className="rounded-xl" /></Field></div>
+                    <div className="sm:col-span-2"><Field label="Observação da confirmação"><Textarea value={partyDraft.rsvpNote} onChange={(event) => setPartyDraft({ ...partyDraft, rsvpNote: event.target.value })} maxLength={400} rows={3} className="rounded-xl" /></Field></div>
+                  </div>
+                  <Button type="submit" disabled={savingParty} className="mt-6 h-11 rounded-full bg-[#7d1f37] px-6 text-white hover:bg-[#64172b]"><Save className="size-4" /> {savingParty ? "Salvando…" : "Salvar dados da festa"}</Button>
+                </form>
+
+                {role === "admin" && (
+                  <form onSubmit={saveBirthdayAccess} className="max-w-4xl rounded-[1.8rem] border border-[#d9c8bd] bg-white p-5 shadow-sm sm:p-7">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Acesso do aniversariante</p>
+                        <h3 className="mt-1 font-serif text-2xl font-semibold">Criar ou trocar senha</h3>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#806e72]">Somente o administrador pode alterar esta senha. O aniversariante continuará sem acesso aos nomes de quem escolheu os presentes.</p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-bold ${birthdayConfigured ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{birthdayConfigured ? "Senha ativa" : "Sem senha"}</span>
+                    </div>
+                    <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                      <Field label="Nova senha do aniversariante"><Input type="password" value={birthdayPassword} onChange={(event) => setBirthdayPassword(event.target.value)} minLength={8} maxLength={128} required autoComplete="new-password" placeholder="Mínimo de 8 caracteres" className="h-11 rounded-xl" /></Field>
+                      <Field label="Confirmar nova senha"><Input type="password" value={birthdayPasswordConfirm} onChange={(event) => setBirthdayPasswordConfirm(event.target.value)} minLength={8} maxLength={128} required autoComplete="new-password" placeholder="Digite novamente" className="h-11 rounded-xl" /></Field>
+                    </div>
+                    <p className="mt-3 text-xs leading-5 text-[#806e72]">Ao salvar, esta senha passa a valer imediatamente e substitui a senha anterior do aniversariante. Sessões antigas do aniversariante deixam de ser válidas.</p>
+                    <Button type="submit" disabled={savingBirthdayPassword} className="mt-5 h-11 rounded-full bg-[#7d1f37] px-6 text-white hover:bg-[#64172b]"><KeyRound className="size-4" /> {savingBirthdayPassword ? "Salvando…" : birthdayConfigured ? "Trocar senha do aniversariante" : "Criar senha do aniversariante"}</Button>
+                  </form>
+                )}
+              </div>
             )}
           </section>
         )}
