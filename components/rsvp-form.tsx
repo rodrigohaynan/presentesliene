@@ -14,6 +14,7 @@ type DuplicateInfo = {
   existingName: string;
   contactName: string;
   rsvpId: string;
+  matchType?: "exact" | "first-name";
 };
 
 export function RsvpForm() {
@@ -67,13 +68,19 @@ export function RsvpForm() {
 
     if (response.status === 409 && data.code === "duplicate-name" && data.duplicates?.length) {
       const lines = data.duplicates.map((item) => {
+        if (item.matchType === "first-name") {
+          if (item.rsvpId === "current") {
+            return `• ${item.submittedName}: possível duplicidade com ${item.existingName} nesta mesma confirmação (mesmo primeiro nome).`;
+          }
+          return `• ${item.submittedName}: possível duplicidade. Já existe ${item.existingName}, adicionado(a) por ${item.contactName}.`;
+        }
         if (item.rsvpId === "current") {
           return `• ${item.submittedName}: o nome aparece duas vezes nesta mesma confirmação.`;
         }
         return `• ${item.submittedName}: pessoa com nome igual foi adicionada por ${item.contactName}.`;
       });
       const proceed = window.confirm(
-        `ATENÇÃO — NOME DUPLICADO\n\n${lines.join("\n")}\n\nSe forem pessoas diferentes com o mesmo nome, toque em OK para confirmar mesmo assim. Caso contrário, toque em Cancelar e corrija a lista.`,
+        `ATENÇÃO — POSSÍVEL DUPLICIDADE\n\n${lines.join("\n")}\n\nSe forem pessoas diferentes, toque em OK para confirmar mesmo assim. Caso contrário, toque em Cancelar e corrija a lista.`,
       );
       if (!proceed) return { cancelled: true } as const;
       return sendConfirmation(true);

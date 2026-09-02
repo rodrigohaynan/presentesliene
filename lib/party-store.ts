@@ -41,11 +41,18 @@ export function normalizeAttendeeName(value: string) {
     .trim();
 }
 
+const SMALL_PARTY_ATTENDEE_LIMIT = 100;
+
+function firstNameKey(value: string) {
+  return normalizeAttendeeName(value).split(" ")[0] ?? "";
+}
+
 export type DuplicateAttendee = {
   submittedName: string;
   existingName: string;
   contactName: string;
   rsvpId: string;
+  matchType: "exact" | "first-name";
 };
 
 export async function findDuplicateAttendees(
@@ -53,50 +60,90 @@ export async function findDuplicateAttendees(
   excludeRsvpId?: string,
 ): Promise<DuplicateAttendee[]> {
   const rsvps = await getAllRsvps();
-  const existing = new Map<string, { name: string; contactName: string; rsvpId: string }>();
+  const relevantRsvps = rsvps.filter((rsvp) => rsvp.id !== excludeRsvpId);
+  const existingAttendeeCount = relevantRsvps.reduce((total, rsvp) => total + rsvp.attendees.length, 0);
+  const useFirstNameWarning = existingAttendeeCount < SMALL_PARTY_ATTENDEE_LIMIT;
 
-  for (const rsvp of rsvps) {
-    if (rsvp.id === excludeRsvpId) continue;
+  const existingExact = new Map<string, { name: string; contactName: string; rsvpId: string }>();
+  const existingFirstName = new Map<string, { name: string; contactName: string; rsvpId: string }>();
+
+  for (const rsvp of relevantRsvps) {
     for (const attendee of rsvp.attendees) {
       const key = normalizeAttendeeName(attendee.name);
-      if (key && !existing.has(key)) {
-        existing.set(key, {
-          name: attendee.name,
-          contactName: rsvp.contactName,
-          rsvpId: rsvp.id,
-        });
-      }
+      const first = firstNameKey(attendee.name);
+      const entry = {
+        name: attendee.name,
+        contactName: rsvp.contactName,
+        rsvpId: rsvp.id,
+      };
+
+      if (key && !existingExact.has(key)) existingExact.set(key, entry);
+      if (first && !existingFirstName.has(first)) existingFirstName.set(first, entry);
     }
   }
 
   const duplicates: DuplicateAttendee[] = [];
-  const submitted = new Map<string, string>();
+  const submittedExact = new Map<string, string>();
+  const submittedFirstName = new Map<string, string>();
+
   for (const attendee of attendees) {
     const key = normalizeAttendeeName(attendee.name);
+    const first = firstNameKey(attendee.name);
     if (!key) continue;
 
-    const match = existing.get(key);
-    if (match) {
+    const exactMatch = existingExact.get(key);
+    if (exactMatch) {
       duplicates.push({
         submittedName: attendee.name,
-        existingName: match.name,
-        contactName: match.contactName,
-        rsvpId: match.rsvpId,
+        existingName: exactMatch.name,
+        contactName: exactMatch.contactName,
+        rsvpId: exactMatch.rsvpId,
+        matchType: "exact",
       });
       continue;
     }
 
-    const repeatedInSubmission = submitted.get(key);
-    if (repeatedInSubmission) {
+    const repeatedExact = submittedExact.get(key);
+    if (repeatedExact) {
       duplicates.push({
         submittedName: attendee.name,
-        existingName: repeatedInSubmission,
+        existingName: repeatedExact,
         contactName: "esta mesma confirmação",
         rsvpId: "current",
+        matchType: "exact",
       });
-    } else {
-      submitted.set(key, attendee.name);
+      continue;
     }
+
+    if (useFirstNameWarning && first) {
+      const firstNameMatch = existingFirstName.get(first);
+      if (firstNameMatch) {
+        duplicates.push({
+          submittedName: attendee.name,
+          existingName: firstNameMatch.name,
+          contactName: firstNameMatch.contactName,
+          rsvpId: firstNameMatch.rsvpId,
+          matchType: "first-name",
+        });
+        submittedExact.set(key, attendee.name);
+        if (!submittedFirstName.has(first)) submittedFirstName.set(first, attendee.name);
+        continue;
+      }
+
+      const repeatedFirstName = submittedFirstName.get(first);
+      if (repeatedFirstName) {
+        duplicates.push({
+          submittedName: attendee.name,
+          existingName: repeatedFirstName,
+          contactName: "esta mesma confirmação",
+          rsvpId: "current",
+          matchType: "first-name",
+        });
+      }
+    }
+
+    submittedExact.set(key, attendee.name);
+    if (first && !submittedFirstName.has(first)) submittedFirstName.set(first, attendee.name);
   }
 
   return duplicates;

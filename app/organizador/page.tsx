@@ -48,6 +48,7 @@ type DuplicateInfo = {
   existingName: string;
   contactName: string;
   rsvpId: string;
+  matchType?: "exact" | "first-name";
 };
 
 const emptyGift = (order = 1): GiftDraft => ({
@@ -254,13 +255,18 @@ export default function OrganizerPage() {
     };
 
     if (response.status === 409 && result.code === "duplicate-name" && result.duplicates?.length) {
-      const lines = result.duplicates.map((item) =>
-        item.rsvpId === "current"
+      const lines = result.duplicates.map((item) => {
+        if (item.matchType === "first-name") {
+          return item.rsvpId === "current"
+            ? `• ${item.submittedName}: possível duplicidade com ${item.existingName} nesta confirmação (mesmo primeiro nome).`
+            : `• ${item.submittedName}: possível duplicidade. Já existe ${item.existingName}, adicionado(a) por ${item.contactName}.`;
+        }
+        return item.rsvpId === "current"
           ? `• ${item.submittedName}: aparece duas vezes nesta confirmação.`
-          : `• ${item.submittedName}: pessoa com nome igual foi adicionada por ${item.contactName}.`,
-      );
+          : `• ${item.submittedName}: pessoa com nome igual foi adicionada por ${item.contactName}.`;
+      });
       const proceed = window.confirm(
-        `ATENÇÃO — NOME DUPLICADO\n\n${lines.join("\n")}\n\nSe forem pessoas diferentes com o mesmo nome, toque em OK para salvar mesmo assim.`,
+        `ATENÇÃO — POSSÍVEL DUPLICIDADE\n\n${lines.join("\n")}\n\nSe forem pessoas diferentes, toque em OK para salvar mesmo assim.`,
       );
       if (!proceed) return "cancelled";
       return performRsvpSave(true);
