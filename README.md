@@ -1,30 +1,52 @@
-# Lista de presentes da Liene — 31 anos
+# Liene 31 anos — convite + RSVP + lista de presentes
 
-Lista de presentes de aniversário construída com Next.js e preparada para publicação no Netlify.
+Projeto em Next.js preparado para publicação no Netlify.
 
-## Funcionalidades
+## O que mudou
 
-- catálogo com 11 sugestões de presentes;
-- reserva com nome e e-mail;
-- atualização atômica no banco de reservas para impedir duas escolhas do mesmo item;
-- item reservado removido das próximas consultas;
-- área do organizador protegida por código;
-- surpresa bloqueada no servidor até 11/09/2026 às 00:00 em Campo Grande;
-- e-mails nunca exibidos na página pública da surpresa.
+- página pública funcionando como convite da festa;
+- data, horário, local, endereço, link do mapa e textos editáveis pelo admin;
+- confirmação de presença com várias pessoas na mesma resposta;
+- classificação individual de cada convidado como **adulto** ou **criança**;
+- lista de presentes com reserva única;
+- painel privado em `/organizador`;
+- painel mostra total de confirmados, adultos, crianças e presentes reservados;
+- admin pode adicionar, editar e excluir presentes;
+- admin pode liberar uma reserva feita por engano;
+- dados persistidos no **Netlify Blobs**, sem banco externo;
+- surpresa de quem escolheu cada presente continua bloqueada até 11/09/2026.
 
-## Publicação
+## Antes de publicar
 
-O Netlify detecta o Next.js automaticamente. As rotas do servidor encaminham as reservas para o serviço seguro já existente, sem exigir Netlify Database ou plano pago.
+No Netlify, crie a variável de ambiente:
 
-## Desenvolvimento
+```text
+ADMIN_PASSWORD=sua-senha-forte
+```
+
+Use pelo menos 8 caracteres. Não coloque a senha diretamente no código nem no GitHub.
+
+O Netlify fornece automaticamente o contexto necessário para o Netlify Blobs em produção. Não é necessário criar banco, tabela ou conta em outro serviço.
+
+## Publicação no Netlify
+
+O projeto usa:
+
+```text
+Build command: npm run build
+Publish directory: .next
+Node: 22
+```
+
+O arquivo `netlify.toml` já contém essas configurações.
+
+Para desenvolvimento local com os recursos da Netlify:
 
 ```bash
 npm install
 npx netlify dev
 ```
 
-Para validar a compilação:
+## Armazenamento
 
-```bash
-npm run build
-```
+Os dados são gravados em um store do Netlify Blobs chamado `liene-31-party` e permanecem disponíveis entre novos deploys do mesmo projeto.

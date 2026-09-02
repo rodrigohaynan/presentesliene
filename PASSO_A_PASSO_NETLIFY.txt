@@ -1,0 +1,50 @@
+LIENE 31 — PUBLICAÇÃO DA NOVA VERSÃO
+
+1) Substitua os arquivos do projeto no GitHub pelos arquivos desta pasta.
+
+2) No Netlify, abra o projeto e vá em:
+   Project configuration > Environment variables
+
+3) Crie a variável:
+   ADMIN_PASSWORD
+
+   Valor: escolha uma senha forte, com pelo menos 8 caracteres.
+   IMPORTANTE: não escreva essa senha em nenhum arquivo do GitHub.
+
+4) Faça um novo deploy no Netlify.
+   O build continua sendo:
+   npm run build
+
+5) Depois que o site estiver no ar, acesse:
+   https://SEU-ENDERECO/organizador
+
+6) Entre com a senha definida em ADMIN_PASSWORD.
+
+7) No painel "Dados da festa", preencha:
+   - horário;
+   - local;
+   - endereço;
+   - link do Google Maps;
+   - texto do convite, se quiser alterar.
+
+8) No painel "Presentes", você pode:
+   - adicionar itens;
+   - editar itens;
+   - excluir itens não reservados;
+   - ver quem escolheu cada presente;
+   - liberar uma reserva feita por engano.
+
+9) No painel "Presenças", você verá:
+   - nome para contato;
+   - WhatsApp;
+   - todas as pessoas confirmadas;
+   - indicação de adulto ou criança;
+   - total de adultos, crianças e convidados.
+
+ARMAZENAMENTO
+Os dados ficam no Netlify Blobs do próprio projeto. Eles permanecem entre novos deploys do mesmo site.
+Não é necessário Supabase, Firebase ou outro banco externo para esta versão.
+
+OBSERVAÇÃO SOBRE O PRIMEIRO BUILD
+Foi adicionada a dependência @netlify/blobs. O Netlify executa npm install e atualiza as dependências automaticamente.
+Se o Netlify reutilizar um cache antigo e acusar módulo ausente, faça um novo deploy usando a opção de limpar o cache de build.
