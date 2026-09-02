@@ -5,9 +5,6 @@
 [build.environment]
   NODE_VERSION = "22"
 
-[template.environment]
-  ORGANIZER_CODE = "Código secreto para acessar a área do organizador"
-
 [[headers]]
   for = "/api/*"
   [headers.values]
