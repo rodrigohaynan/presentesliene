@@ -73,7 +73,8 @@ async function captureSuggestionImageIfRequested<T extends Omit<GiftItem, "id"> 
   gift: T,
   shouldCapture: boolean,
 ): Promise<{ gift: T; capturedImageKey?: string; imageCaptured: boolean; imageCaptureWarning?: string }> {
-  if (!shouldCapture || !gift.suggestionUrl) return { gift, imageCaptured: false };
+  // Foto enviada manualmente sempre tem prioridade. A captura automática nunca pode substituí-la.
+  if (!shouldCapture || !gift.suggestionUrl || gift.imageKey) return { gift, imageCaptured: false };
 
   try {
     const captured = await captureProductImageFromUrl(gift.suggestionUrl);

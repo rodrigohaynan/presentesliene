@@ -552,7 +552,7 @@ export default function OrganizerPage() {
                 const reservation = reservationByGift.get(gift.id);
                 return (
                   <article key={gift.id} className="overflow-hidden rounded-[1.6rem] border border-[#dfd0c6] bg-white shadow-sm">
-                    {gift.imageKey && <img key={gift.imageKey} src={`/api/gift-images/${encodeURIComponent(gift.imageKey)}`} alt={`Imagem de ${gift.name}`} className="h-52 w-full object-cover" />}
+                    <OrganizerGiftCardImage gift={gift} />
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
                         <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p>{gift.suggestionUrl && <a href={gift.suggestionUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-bold text-[#7d1f37] hover:underline">Abrir link de sugestão ↗</a>}</div>
@@ -633,6 +633,32 @@ export default function OrganizerPage() {
   );
 }
 
+function OrganizerGiftCardImage({ gift }: { gift: GiftItem }) {
+  const [suggestionFailed, setSuggestionFailed] = useState(false);
+
+  useEffect(() => {
+    setSuggestionFailed(false);
+  }, [gift.suggestionUrl]);
+
+  if (gift.imageKey) {
+    return <img key={gift.imageKey} src={`/api/gift-images/${encodeURIComponent(gift.imageKey)}`} alt={`Imagem de ${gift.name}`} className="h-52 w-full object-contain bg-[#f7eee7]" />;
+  }
+
+  if (gift.suggestionUrl && !suggestionFailed) {
+    return (
+      <img
+        key={gift.suggestionUrl}
+        src={`/api/product-image?url=${encodeURIComponent(gift.suggestionUrl)}`}
+        alt={`Imagem do anúncio de ${gift.name}`}
+        onError={() => setSuggestionFailed(true)}
+        className="h-52 w-full object-contain bg-[#f7eee7]"
+      />
+    );
+  }
+
+  return null;
+}
+
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
   return <article className="rounded-[1.5rem] border border-[#dfd0c6] bg-white p-5 shadow-sm"><div className="grid size-10 place-items-center rounded-xl bg-[#f4e7e0] text-[#7d1f37]">{icon}</div><p className="mt-4 text-sm text-[#806e72]">{label}</p><p className="mt-1 font-serif text-3xl font-semibold">{value}</p></article>;
 }
@@ -703,7 +729,17 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
   saving: boolean;
 }) {
   const [processingImage, setProcessingImage] = useState(false);
+  const [suggestionPreviewFailed, setSuggestionPreviewFailed] = useState(false);
   const originalImageKey = useRef(draft.imageKey);
+
+  useEffect(() => {
+    setSuggestionPreviewFailed(false);
+  }, [draft.suggestionUrl]);
+
+  const suggestionPreviewUrl =
+    !draft.imageKey && draft.suggestionUrl?.trim() && !suggestionPreviewFailed
+      ? `/api/product-image?url=${encodeURIComponent(draft.suggestionUrl.trim())}`
+      : null;
 
   async function discardTemporaryImage(imageKey: string | undefined) {
     if (!imageKey || imageKey === originalImageKey.current) return;
@@ -754,17 +790,37 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
           <div className="mt-2 overflow-hidden rounded-2xl border border-dashed border-[#cdb8ab] bg-white">
             {draft.imageKey ? (
               <div>
-                <img key={draft.imageKey} src={`/api/gift-images/${encodeURIComponent(draft.imageKey)}`} alt="Prévia do presente" className="h-48 w-full object-cover" />
+                <div className="relative">
+                  <img key={draft.imageKey} src={`/api/gift-images/${encodeURIComponent(draft.imageKey)}`} alt="Prévia do presente" className="h-48 w-full object-contain bg-[#f7eee7]" />
+                  <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-[#7d1f37] shadow-sm">Foto manual</span>
+                </div>
                 <div className="flex gap-2 p-3">
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d7c6bb] bg-white px-3 py-2 text-xs font-bold"><ImagePlus className="size-3.5" /> {processingImage ? "Enviando…" : "Trocar"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={processingImage} onChange={(event) => void chooseImage(event.target.files?.[0])} /></label>
                   <Button type="button" variant="ghost" disabled={processingImage} onClick={() => void removeImage()} className="h-8 rounded-full px-3 text-xs text-red-700 hover:bg-red-50">Remover</Button>
+                </div>
+              </div>
+            ) : suggestionPreviewUrl ? (
+              <div>
+                <div className="relative">
+                  <img
+                    key={draft.suggestionUrl}
+                    src={suggestionPreviewUrl}
+                    alt="Imagem automática do anúncio"
+                    onError={() => setSuggestionPreviewFailed(true)}
+                    className="h-48 w-full object-contain bg-[#f7eee7]"
+                  />
+                  <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold text-[#6b4a18] shadow-sm">Imagem do link</span>
+                </div>
+                <div className="p-3">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#d7c6bb] bg-white px-3 py-2 text-xs font-bold"><ImagePlus className="size-3.5" /> {processingImage ? "Enviando…" : "Usar foto manual"}<input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={processingImage} onChange={(event) => void chooseImage(event.target.files?.[0])} /></label>
+                  <p className="mt-2 text-[11px] leading-4 text-[#806e72]">Esta imagem vem do anúncio. Se enviar uma foto manual, ela passa a ter prioridade.</p>
                 </div>
               </div>
             ) : (
               <label className="flex min-h-48 cursor-pointer flex-col items-center justify-center gap-3 p-5 text-center text-[#806e72] hover:bg-[#fffaf5]">
                 <span className="grid size-12 place-items-center rounded-2xl bg-[#f4e7e0] text-[#7d1f37]"><ImagePlus className="size-5" /></span>
                 <span className="text-sm font-semibold">{processingImage ? "Enviando imagem…" : "Enviar foto do presente"}</span>
-                <span className="text-xs leading-5">JPG, PNG ou WEBP. A foto é reduzida automaticamente e armazenada separadamente no Netlify.</span>
+                <span className="text-xs leading-5">{draft.suggestionUrl && suggestionPreviewFailed ? "Não foi possível ler a imagem desse anúncio. Você pode enviar uma foto manual." : "JPG, PNG ou WEBP. Se não enviar foto e houver um link válido, a imagem do anúncio será usada automaticamente."}</span>
                 <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={processingImage} onChange={(event) => void chooseImage(event.target.files?.[0])} />
               </label>
             )}
@@ -785,13 +841,10 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
                 value={draft.suggestionUrl ?? ""}
                 onChange={(event) => {
                   const nextValue = event.target.value;
-                  const hasChanged = nextValue.trim() !== (draft.suggestionUrl ?? "").trim();
                   onChange({
                     ...draft,
                     suggestionUrl: nextValue || undefined,
-                    captureSuggestionImage: nextValue.trim()
-                      ? Boolean(draft.captureSuggestionImage || hasChanged)
-                      : false,
+                    captureSuggestionImage: false,
                   });
                 }}
                 maxLength={1000}
@@ -799,22 +852,12 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
                 className="h-11 rounded-xl"
               />
             </Field>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <p className="flex-1 text-xs leading-5 text-[#806e72]">
-                {draft.captureSuggestionImage && draft.suggestionUrl
-                  ? "Ao salvar, o site tentará capturar automaticamente a imagem principal deste anúncio."
+            <div className="mt-2">
+              <p className="text-xs leading-5 text-[#806e72]">
+                {draft.suggestionUrl
+                  ? "Sem foto manual, a imagem principal deste anúncio será exibida automaticamente no card do presente. A foto enviada manualmente sempre tem prioridade."
                   : "Se deixar vazio, o convidado poderá pesquisar este presente na Shopee ou no Mercado Livre."}
               </p>
-              {draft.suggestionUrl && !draft.captureSuggestionImage && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onChange({ ...draft, captureSuggestionImage: true })}
-                  className="h-8 rounded-full border-[#d7c6bb] bg-white px-3 text-xs"
-                >
-                  <ImagePlus className="size-3.5" /> Capturar imagem do link
-                </Button>
-              )}
             </div>
           </div>
         </div>

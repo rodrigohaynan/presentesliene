@@ -27,6 +27,7 @@ export function GiftList() {
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [failedSuggestionImages, setFailedSuggestionImages] = useState<Set<string>>(() => new Set());
 
   const loadGifts = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -116,16 +117,33 @@ export function GiftList() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {gifts.map((gift, index) => {
             const Icon = icons[gift.icon as keyof typeof icons] ?? Gift;
+            const suggestionImageFailed = Boolean(gift.suggestionUrl && failedSuggestionImages.has(gift.suggestionUrl));
+            const imageSrc = gift.imageKey
+              ? `/api/gift-images/${encodeURIComponent(gift.imageKey)}`
+              : gift.suggestionUrl && !suggestionImageFailed
+                ? `/api/product-image?url=${encodeURIComponent(gift.suggestionUrl)}`
+                : null;
+            const imageComesFromSuggestion = !gift.imageKey && Boolean(gift.suggestionUrl) && Boolean(imageSrc);
             return (
               <article key={gift.id} className="group flex min-h-64 flex-col overflow-hidden rounded-[1.6rem] border border-[#dfd0c6] bg-white/90 shadow-[0_10px_35px_rgba(74,35,41,0.06)] transition duration-300 hover:-translate-y-1 hover:border-[#c9a568] hover:shadow-[0_18px_45px_rgba(74,35,41,0.12)]">
-                {gift.imageKey ? (
+                {imageSrc ? (
                   <div className="relative aspect-[4/3] overflow-hidden bg-[#f7eee7]">
-                    <img key={gift.imageKey} src={`/api/gift-images/${encodeURIComponent(gift.imageKey)}`} alt={`Imagem sugerida de ${gift.name}`} className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.025]" />
+                    <img
+                      key={gift.imageKey ?? gift.suggestionUrl}
+                      src={imageSrc}
+                      alt={`Imagem sugerida de ${gift.name}`}
+                      onError={() => {
+                        if (imageComesFromSuggestion && gift.suggestionUrl) {
+                          setFailedSuggestionImages((current) => new Set(current).add(gift.suggestionUrl!));
+                        }
+                      }}
+                      className="h-full w-full object-contain transition duration-300 group-hover:scale-[1.025]"
+                    />
                     <span className="absolute right-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold tabular-nums text-[#8a6d61] shadow-sm">{String(index + 1).padStart(2, "0")}</span>
                   </div>
                 ) : null}
                 <div className="flex flex-1 flex-col p-5">
-                  {!gift.imageKey && (
+                  {!imageSrc && (
                     <div className="mb-5 flex items-start justify-between">
                       <span className="grid size-12 place-items-center rounded-2xl bg-[#f7eee7] text-[#8a263d] transition group-hover:bg-[#8a263d] group-hover:text-white"><Icon className="size-5" aria-hidden="true" /></span>
                       <span className="text-sm font-semibold tabular-nums text-[#b19487]">{String(index + 1).padStart(2, "0")}</span>
