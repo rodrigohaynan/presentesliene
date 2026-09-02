@@ -20,6 +20,21 @@ function mercadoLivreSearchUrl(name: string) {
   return `https://lista.mercadolivre.com.br/${encodeURIComponent(name)}`;
 }
 
+function suggestionImageFingerprint(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function suggestionImageProxyUrl(giftId: string, suggestionUrl: string) {
+  const fingerprint = suggestionImageFingerprint(suggestionUrl);
+  const cacheKey = `${giftId}-${fingerprint}`;
+  return `/api/product-image/${encodeURIComponent(cacheKey)}?url=${encodeURIComponent(suggestionUrl)}`;
+}
+
 export function GiftList() {
   const [gifts, setGifts] = useState<GiftItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,7 +138,7 @@ export function GiftList() {
               : gift.suggestionImageKey
                 ? `/api/gift-images/${encodeURIComponent(gift.suggestionImageKey)}`
                 : gift.suggestionUrl && !suggestionImageFailed
-                  ? `/api/product-image?url=${encodeURIComponent(gift.suggestionUrl)}`
+                  ? suggestionImageProxyUrl(gift.id, gift.suggestionUrl)
                   : null;
             const imageComesFromSuggestion = !gift.imageKey && !gift.suggestionImageKey && Boolean(gift.suggestionUrl) && Boolean(imageSrc);
             return (

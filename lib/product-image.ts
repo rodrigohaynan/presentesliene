@@ -108,6 +108,7 @@ async function fetchPublic(
     try {
       response = await fetch(currentUrl, {
         ...init,
+        cache: "no-store",
         redirect: "manual",
         signal: controller.signal,
       });

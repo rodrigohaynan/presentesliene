@@ -561,7 +561,7 @@ export default function OrganizerPage() {
                           openGiftEditor({
                             ...gift,
                             captureSuggestionImage:
-                              Boolean(gift.suggestionUrl) && !gift.imageKey && !gift.suggestionImageKey,
+                              Boolean(gift.suggestionUrl) && !gift.imageKey,
                           })
                         } aria-label={`Editar ${gift.name}`} className="h-9 shrink-0 gap-1.5 rounded-full border-[#d7c6bb] bg-white px-3"><Edit3 className="size-4" /><span>Editar</span></Button>
                       </div>
@@ -661,6 +661,22 @@ export default function OrganizerPage() {
   );
 }
 
+
+function suggestionImageFingerprint(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function suggestionImageProxyUrl(giftId: string, suggestionUrl: string) {
+  const fingerprint = suggestionImageFingerprint(suggestionUrl);
+  const cacheKey = `${giftId}-${fingerprint}`;
+  return `/api/product-image/${encodeURIComponent(cacheKey)}?url=${encodeURIComponent(suggestionUrl)}`;
+}
+
 function OrganizerGiftCardImage({ gift }: { gift: GiftItem }) {
   const [suggestionFailed, setSuggestionFailed] = useState(false);
 
@@ -680,7 +696,7 @@ function OrganizerGiftCardImage({ gift }: { gift: GiftItem }) {
     return (
       <img
         key={gift.suggestionUrl}
-        src={`/api/product-image?url=${encodeURIComponent(gift.suggestionUrl)}`}
+        src={suggestionImageProxyUrl(gift.id, gift.suggestionUrl)}
         alt={`Imagem do anúncio de ${gift.name}`}
         onError={() => setSuggestionFailed(true)}
         className="h-52 w-full object-contain bg-[#f7eee7]"
@@ -770,7 +786,7 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
 
   const suggestionPreviewUrl =
     !draft.imageKey && !draft.suggestionImageKey && draft.suggestionUrl?.trim() && !suggestionPreviewFailed
-      ? `/api/product-image?url=${encodeURIComponent(draft.suggestionUrl.trim())}`
+      ? suggestionImageProxyUrl(draft.id ?? "novo", draft.suggestionUrl.trim())
       : null;
 
   async function discardTemporaryImage(imageKey: string | undefined) {

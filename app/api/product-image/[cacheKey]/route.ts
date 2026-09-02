@@ -4,13 +4,20 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const revalidate = 0;
 
+type RouteContext = {
+  params: Promise<{ cacheKey: string }>;
+};
+
 function normalizeProductUrl(value: string) {
   const input = value.trim().slice(0, 1000);
   if (!input) return "";
   return /^https?:\/\//i.test(input) ? input : `https://${input}`;
 }
 
-export async function GET(request: Request) {
+export async function GET(request: Request, context: RouteContext) {
+  // Reading the path parameter intentionally makes each present/link a distinct route cache key.
+  await context.params;
+
   const rawUrl = new URL(request.url).searchParams.get("url") ?? "";
   const productUrl = normalizeProductUrl(rawUrl);
   if (!productUrl) {
