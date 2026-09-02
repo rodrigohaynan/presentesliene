@@ -364,8 +364,13 @@ export async function captureProductImageFromUrl(rawUrl: string): Promise<Captur
   const contentType = detectedImageType(imageBytes, image.response.headers.get("content-type") ?? "");
   if (!contentType) throw new Error("O arquivo encontrado no anúncio não é uma imagem válida.");
 
+  // TypeScript 5.7+ distingue ArrayBufferLike/SharedArrayBuffer de BlobPart.
+  // Copiamos para um ArrayBuffer concreto antes de criar o Blob.
+  const imageBuffer = new ArrayBuffer(imageBytes.byteLength);
+  new Uint8Array(imageBuffer).set(imageBytes);
+
   return {
-    blob: new Blob([imageBytes], { type: contentType }),
+    blob: new Blob([imageBuffer], { type: contentType }),
     sourceUrl: image.finalUrl.toString(),
   };
 }
