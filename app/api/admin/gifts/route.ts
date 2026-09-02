@@ -14,6 +14,7 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
   const priceHint = clean(body.priceHint, 100);
   const icon = clean(body.icon, 30) as GiftIcon;
   const imageKey = typeof body.imageKey === "string" ? body.imageKey.trim() : "";
+  const suggestionUrlInput = clean(body.suggestionUrl, 1000);
   const order = Number(body.order);
 
   if (requireId && !id) return { error: "Item inválido." } as const;
@@ -21,6 +22,22 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
   if (!GIFT_ICONS.includes(icon)) return { error: "Ícone inválido." } as const;
   if (imageKey && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(imageKey)) {
     return { error: "A referência da imagem do presente é inválida." } as const;
+  }
+
+  let suggestionUrl: string | undefined;
+  if (suggestionUrlInput) {
+    const candidate = /^https?:\/\//i.test(suggestionUrlInput)
+      ? suggestionUrlInput
+      : `https://${suggestionUrlInput}`;
+    try {
+      const url = new URL(candidate);
+      if (url.protocol !== "http:" && url.protocol !== "https:") {
+        return { error: "O link de sugestão precisa usar http ou https." } as const;
+      }
+      suggestionUrl = url.toString();
+    } catch {
+      return { error: "Informe um link de sugestão válido." } as const;
+    }
   }
 
   return {
@@ -31,6 +48,7 @@ function parseGift(body: Record<string, unknown>, requireId: boolean) {
       priceHint,
       icon,
       imageKey: imageKey || undefined,
+      suggestionUrl,
       order: Number.isFinite(order) ? Math.max(1, Math.round(order)) : 1,
     },
   } as const;

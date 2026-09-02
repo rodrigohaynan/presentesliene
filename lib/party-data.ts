@@ -22,6 +22,7 @@ export type GiftItem = {
   priceHint: string;
   icon: GiftIcon;
   imageKey?: string;
+  suggestionUrl?: string;
   order: number;
 };
 

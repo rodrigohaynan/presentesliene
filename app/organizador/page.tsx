@@ -60,6 +60,7 @@ const emptyGift = (order = 1): GiftDraft => ({
   priceHint: "",
   icon: "gift",
   imageKey: undefined,
+  suggestionUrl: undefined,
   order,
 });
 
@@ -481,7 +482,7 @@ export default function OrganizerPage() {
         ) : tab === "presentes" ? (
           <section className="mt-7">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Gerenciamento</p><h2 className="mt-1 font-serif text-3xl font-semibold">Lista de presentes</h2><p className="mt-2 text-sm text-[#806e72]">Além do texto, agora você pode enviar uma foto de referência para cada presente.</p></div>
+              <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Gerenciamento</p><h2 className="mt-1 font-serif text-3xl font-semibold">Lista de presentes</h2><p className="mt-2 text-sm text-[#806e72]">Você pode enviar foto e adicionar um link de sugestão de compra para cada presente.</p></div>
               <Button type="button" onClick={() => setEditingGift(emptyGift(data.gifts.length + 1))} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><Plus className="size-4" /> Adicionar presente</Button>
             </div>
 
@@ -497,7 +498,7 @@ export default function OrganizerPage() {
                     {gift.imageKey && <img key={gift.imageKey} src={`/api/gift-images/${encodeURIComponent(gift.imageKey)}`} alt={`Imagem de ${gift.name}`} className="h-52 w-full object-cover" />}
                     <div className="p-5">
                       <div className="flex items-start justify-between gap-4">
-                        <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p></div>
+                        <div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#f3ead8] px-2.5 py-1 text-xs font-bold text-[#6b4a18]">#{gift.order}</span>{reservation ? <span className="rounded-full bg-[#e5f4ea] px-2.5 py-1 text-xs font-bold text-[#24623a]">Reservado</span> : <span className="rounded-full bg-[#f4e7e0] px-2.5 py-1 text-xs font-bold text-[#7d1f37]">Disponível</span>}</div><h3 className="mt-3 font-serif text-xl font-semibold">{gift.name}</h3><p className="mt-2 text-sm leading-6 text-[#806e72]">{gift.description}</p><p className="mt-2 text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</p>{gift.suggestionUrl && <a href={gift.suggestionUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-bold text-[#7d1f37] hover:underline">Abrir link de sugestão ↗</a>}</div>
                         <Button type="button" variant="outline" onClick={() => setEditingGift({ ...gift })} className="shrink-0 rounded-full border-[#d7c6bb] bg-white"><Edit3 className="size-4" /></Button>
                       </div>
                       {reservation && (
@@ -698,6 +699,20 @@ function GiftEditor({ draft, onChange, onCancel, onSubmit, saving }: {
           <div className="sm:col-span-2"><Field label="Descrição"><Textarea value={draft.description} onChange={(event) => onChange({ ...draft, description: event.target.value })} maxLength={500} rows={3} className="rounded-xl" /></Field></div>
           <Field label="Observação curta"><Input value={draft.priceHint} onChange={(event) => onChange({ ...draft, priceHint: event.target.value })} maxLength={100} placeholder="Ex.: Tamanho M" className="h-11 rounded-xl" /></Field>
           <Field label="Ícone"><select value={draft.icon} onChange={(event) => onChange({ ...draft, icon: event.target.value as GiftIcon })} className="h-11 w-full rounded-xl border border-[#d8c5b8] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-[#a96b7b]">{GIFT_ICONS.map((icon) => <option key={icon} value={icon}>{iconLabels[icon]}</option>)}</select></Field>
+          <div className="sm:col-span-2">
+            <Field label="Link de sugestão (opcional)">
+              <Input
+                type="text"
+                inputMode="url"
+                value={draft.suggestionUrl ?? ""}
+                onChange={(event) => onChange({ ...draft, suggestionUrl: event.target.value || undefined })}
+                maxLength={1000}
+                placeholder="https://loja.com/produto ou shopee.com.br/..."
+                className="h-11 rounded-xl"
+              />
+            </Field>
+            <p className="mt-2 text-xs leading-5 text-[#806e72]">Se deixar vazio, o convidado poderá pesquisar este presente na Shopee ou no Mercado Livre.</p>
+          </div>
         </div>
       </div>
       <div className="mt-5 flex flex-wrap gap-2"><Button type="submit" disabled={saving || processingImage} className="rounded-full bg-[#7d1f37] text-white hover:bg-[#64172b]"><CheckCircle2 className="size-4" /> {saving ? "Salvando…" : "Salvar presente"}</Button><Button type="button" variant="outline" onClick={() => void cancelEditor()} className="rounded-full border-[#d7c6bb] bg-white">Cancelar</Button></div>

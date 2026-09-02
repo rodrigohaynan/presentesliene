@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, Flower2, Gem, Gift, Heart, MapPinned, ShoppingBag, Sparkles, Star, Ticket, Utensils } from "lucide-react";
+import { BookOpen, ExternalLink, Flower2, Gem, Gift, Heart, MapPinned, Search, ShoppingBag, Sparkles, Star, Ticket, Utensils } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,6 +11,14 @@ import { Toaster } from "@/components/ui/sonner";
 import type { GiftItem } from "@/lib/party-data";
 
 const icons = { book: BookOpen, flower: Flower2, gem: Gem, gift: Gift, heart: Heart, map: MapPinned, "shopping-bag": ShoppingBag, sparkles: Sparkles, star: Star, ticket: Ticket, utensils: Utensils };
+
+function shopeeSearchUrl(name: string) {
+  return `https://shopee.com.br/search?keyword=${encodeURIComponent(name)}`;
+}
+
+function mercadoLivreSearchUrl(name: string) {
+  return `https://lista.mercadolivre.com.br/${encodeURIComponent(name)}`;
+}
 
 export function GiftList() {
   const [gifts, setGifts] = useState<GiftItem[]>([]);
@@ -125,6 +133,42 @@ export function GiftList() {
                   )}
                 <h3 className="font-serif text-xl font-semibold text-[#391a22]">{gift.name}</h3>
                 <p className="mt-2 flex-1 text-[15px] leading-6 text-[#725f63]">{gift.description}</p>
+
+                <div className="mt-4">
+                  {gift.suggestionUrl ? (
+                    <a
+                      href={gift.suggestionUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-9 items-center gap-2 rounded-full border border-[#cdb8ab] bg-[#fffaf5] px-4 text-xs font-bold text-[#7d1f37] transition hover:border-[#a96b7b] hover:bg-[#f7eee7]"
+                    >
+                      <ExternalLink className="size-3.5" /> Ver sugestão
+                    </a>
+                  ) : (
+                    <div>
+                      <p className="mb-2 text-xs font-semibold text-[#8f7c80]">Onde procurar</p>
+                      <div className="flex flex-wrap gap-2">
+                        <a
+                          href={shopeeSearchUrl(gift.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[#e2d3c8] bg-white px-3 text-xs font-bold text-[#654f54] transition hover:border-[#c9a568] hover:bg-[#fffaf5]"
+                        >
+                          <Search className="size-3.5" /> Shopee
+                        </a>
+                        <a
+                          href={mercadoLivreSearchUrl(gift.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-[#e2d3c8] bg-white px-3 text-xs font-bold text-[#654f54] transition hover:border-[#c9a568] hover:bg-[#fffaf5]"
+                        >
+                          <Search className="size-3.5" /> Mercado Livre
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="mt-5 flex items-center justify-between gap-3 border-t border-[#eee4de] pt-4">
                   <span className="text-sm font-semibold text-[#8c6b34]">{gift.priceHint}</span>
                   <Button type="button" onClick={() => setSelected(gift)} className="h-10 rounded-full bg-[#7d1f37] px-5 text-white hover:bg-[#64172b]">Escolher</Button>
