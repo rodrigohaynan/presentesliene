@@ -17,10 +17,15 @@ type DuplicateInfo = {
   matchType?: "exact" | "first-name";
 };
 
+function normalizePersonName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR");
+}
+
 export function RsvpForm() {
   const [contactName, setContactName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [attendees, setAttendees] = useState<AttendeeDraft[]>([{ name: "", category: "adult" }]);
+  const [includeContactAsAttendee, setIncludeContactAsAttendee] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [rsvpNote, setRsvpNote] = useState("Informe todas as pessoas que irão com você e marque cada uma como adulto ou criança.");
@@ -34,23 +39,74 @@ export function RsvpForm() {
       .catch(() => undefined);
   }, []);
 
-  const attendeeSummary = useMemo(() => ({
-    total: attendees.filter((item) => item.name.trim().length >= 2).length,
-    adults: attendees.filter((item) => item.name.trim().length >= 2 && item.category === "adult").length,
-    children: attendees.filter((item) => item.name.trim().length >= 2 && item.category === "child").length,
-  }), [attendees]);
+  const cleanedAttendees = useMemo(
+    () =>
+      attendees
+        .map((item) => ({
+          name: item.name.trim().replace(/\s+/g, " "),
+          category: item.category,
+        }))
+        .filter((item) => item.name.length >= 2),
+    [attendees],
+  );
+
+  const contactAlreadyListed = useMemo(() => {
+    const normalizedContact = normalizePersonName(contactName);
+    if (normalizedContact.length < 2) return false;
+
+    return cleanedAttendees.some(
+      (item) => normalizePersonName(item.name) === normalizedContact,
+    );
+  }, [cleanedAttendees, contactName]);
+
+  const effectiveAttendees = useMemo<AttendeeDraft[]>(() => {
+    const contact = contactName.trim().replace(/\s+/g, " ");
+
+    if (
+      !includeContactAsAttendee ||
+      contact.length < 2 ||
+      contactAlreadyListed
+    ) {
+      return cleanedAttendees;
+    }
+
+    return [{ name: contact, category: "adult" }, ...cleanedAttendees];
+  }, [
+    cleanedAttendees,
+    contactAlreadyListed,
+    contactName,
+    includeContactAsAttendee,
+  ]);
+
+  const attendeeSummary = useMemo(
+    () => ({
+      total: effectiveAttendees.length,
+      adults: effectiveAttendees.filter((item) => item.category === "adult").length,
+      children: effectiveAttendees.filter((item) => item.category === "child").length,
+    }),
+    [effectiveAttendees],
+  );
+
+  const maxManualAttendees = includeContactAsAttendee ? 11 : 12;
 
   function updateAttendee(index: number, patch: Partial<AttendeeDraft>) {
-    setAttendees((items) => items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
+    setAttendees((items) =>
+      items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...patch } : item,
+      ),
+    );
   }
 
   function addAttendee() {
-    if (attendees.length >= 12) return;
+    if (attendees.length >= maxManualAttendees) return;
     setAttendees((items) => [...items, { name: "", category: "adult" }]);
   }
 
   function removeAttendee(index: number) {
-    if (attendees.length === 1) return;
+    if (attendees.length === 1) {
+      setAttendees([{ name: "", category: "adult" }]);
+      return;
+    }
     setAttendees((items) => items.filter((_, itemIndex) => itemIndex !== index));
   }
 
@@ -58,8 +114,14 @@ export function RsvpForm() {
     const response = await fetch("/api/rsvp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contactName, whatsapp, attendees, allowDuplicate }),
+      body: JSON.stringify({
+        contactName,
+        whatsapp,
+        attendees: effectiveAttendees,
+        allowDuplicate,
+      }),
     });
+
     const data = (await response.json()) as {
       error?: string;
       code?: string;
@@ -74,14 +136,18 @@ export function RsvpForm() {
           }
           return `• ${item.submittedName}: possível duplicidade. Já existe ${item.existingName}, adicionado(a) por ${item.contactName}.`;
         }
+
         if (item.rsvpId === "current") {
           return `• ${item.submittedName}: o nome aparece duas vezes nesta mesma confirmação.`;
         }
+
         return `• ${item.submittedName}: pessoa com nome igual foi adicionada por ${item.contactName}.`;
       });
+
       const proceed = window.confirm(
         `ATENÇÃO — POSSÍVEL DUPLICIDADE\n\n${lines.join("\n")}\n\nSe forem pessoas diferentes, toque em OK para confirmar mesmo assim. Caso contrário, toque em Cancelar e corrija a lista.`,
       );
+
       if (!proceed) return { cancelled: true } as const;
       return sendConfirmation(true);
     }
@@ -93,6 +159,27 @@ export function RsvpForm() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
+
+    const invalidFilledAttendee = attendees.some((item) => {
+      const length = item.name.trim().length;
+      return length > 0 && length < 2;
+    });
+
+    if (invalidFilledAttendee) {
+      toast.error("Revise os nomes preenchidos antes de confirmar.");
+      return;
+    }
+
+    if (effectiveAttendees.length < 1) {
+      toast.error("Inclua pelo menos uma pessoa na confirmação.");
+      return;
+    }
+
+    if (effectiveAttendees.length > 12) {
+      toast.error("A confirmação pode ter no máximo 12 pessoas.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const result = await sendConfirmation();
@@ -110,16 +197,30 @@ export function RsvpForm() {
     return (
       <section id="confirmar-presenca" className="border-y border-[#dfd0c6] bg-[#f5ece6]">
         <div className="mx-auto max-w-4xl px-5 py-14 text-center sm:px-8 lg:py-16">
-          <div className="mx-auto grid size-14 place-items-center rounded-full bg-[#7d1f37] text-white"><CheckCircle2 className="size-7" /></div>
+          <div className="mx-auto grid size-14 place-items-center rounded-full bg-[#7d1f37] text-white">
+            <CheckCircle2 className="size-7" />
+          </div>
           <p className="mt-5 text-sm font-bold uppercase tracking-[0.18em] text-[#9b722c]">Tudo certo</p>
-          <h2 className="mt-2 font-serif text-3xl font-semibold text-[#391a22] sm:text-4xl">Presença confirmada!</h2>
-          <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-[#725f63]">Os nomes informados já aparecem no painel do organizador, separados entre adultos e crianças. Nos vemos na festa!</p>
-          <Button type="button" variant="outline" onClick={() => {
-            setConfirmed(false);
-            setContactName("");
-            setWhatsapp("");
-            setAttendees([{ name: "", category: "adult" }]);
-          }} className="mt-6 rounded-full border-[#cdb8ab] bg-white">Enviar outra confirmação</Button>
+          <h2 className="mt-2 font-serif text-3xl font-semibold text-[#391a22] sm:text-4xl">
+            Presença confirmada!
+          </h2>
+          <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-[#725f63]">
+            Os nomes informados já aparecem no painel do organizador, separados entre adultos e crianças. Nos vemos na festa!
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setConfirmed(false);
+              setContactName("");
+              setWhatsapp("");
+              setAttendees([{ name: "", category: "adult" }]);
+              setIncludeContactAsAttendee(true);
+            }}
+            className="mt-6 rounded-full border-[#cdb8ab] bg-white"
+          >
+            Enviar outra confirmação
+          </Button>
         </div>
         <Toaster richColors closeButton position="top-center" />
       </section>
@@ -134,64 +235,210 @@ export function RsvpForm() {
           <h2 className="mt-3 font-serif text-4xl font-semibold text-[#391a22]">Quem vai celebrar com a Liene?</h2>
           <p className="mt-4 max-w-md text-base leading-7 text-[#725f63]">{rsvpNote}</p>
           <div className="mt-6 space-y-3 text-sm text-[#654f54]">
-            <p className="flex items-center gap-3"><UsersRound className="size-5 text-[#7d1f37]" /> Você pode adicionar até 12 pessoas na mesma confirmação.</p>
-            <p className="flex items-center gap-3"><Baby className="size-5 text-[#7d1f37]" /> Toda criança cadastrada abaixo entra normalmente na contagem de pessoas confirmadas.</p>
+            <p className="flex items-center gap-3">
+              <UsersRound className="size-5 text-[#7d1f37]" />
+              Você pode adicionar até 12 pessoas na mesma confirmação.
+            </p>
+            <p className="flex items-center gap-3">
+              <Baby className="size-5 text-[#7d1f37]" />
+              Toda criança cadastrada abaixo entra normalmente na contagem de pessoas confirmadas.
+            </p>
           </div>
         </div>
 
         <form onSubmit={submit} className="rounded-[2rem] border border-[#dfd0c6] bg-white p-5 shadow-sm sm:p-7">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="rsvp-contact-name" className="text-sm font-semibold text-[#4d3036]">Quem está fazendo a confirmação?</label>
-              <Input id="rsvp-contact-name" value={contactName} onChange={(event) => setContactName(event.target.value)} minLength={2} maxLength={80} required autoComplete="name" placeholder="Nome do responsável" className="mt-2 h-11 rounded-xl" />
-              <p className="mt-1.5 text-xs leading-5 text-[#8b787c]">Este nome identifica o responsável pelo contato. Ele só entra na contagem se também for incluído na lista de pessoas abaixo.</p>
+              <label htmlFor="rsvp-contact-name" className="text-sm font-semibold text-[#4d3036]">
+                Quem está fazendo a confirmação?
+              </label>
+              <Input
+                id="rsvp-contact-name"
+                value={contactName}
+                onChange={(event) => setContactName(event.target.value)}
+                minLength={2}
+                maxLength={80}
+                required
+                autoComplete="name"
+                placeholder="Nome do responsável"
+                className="mt-2 h-11 rounded-xl"
+              />
+
+              <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-xl border border-[#e5d6cc] bg-[#fffaf5] p-3">
+                <input
+                  type="checkbox"
+                  checked={includeContactAsAttendee}
+                  onChange={(event) => setIncludeContactAsAttendee(event.target.checked)}
+                  className="mt-0.5 size-4 accent-[#7d1f37]"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-[#4d3036]">
+                    O responsável também vai à festa
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-5 text-[#806e72]">
+                    {contactAlreadyListed
+                      ? "Este nome já está na lista abaixo e não será duplicado."
+                      : includeContactAsAttendee
+                        ? "Será incluído automaticamente como adulto na lista de confirmados."
+                        : "Marque esta opção para incluir o responsável automaticamente."}
+                  </span>
+                </span>
+              </label>
             </div>
+
             <div>
-              <label htmlFor="rsvp-whatsapp" className="text-sm font-semibold text-[#4d3036]">WhatsApp para contato</label>
-              <Input id="rsvp-whatsapp" value={whatsapp} onChange={(event) => setWhatsapp(event.target.value)} minLength={8} maxLength={30} required inputMode="tel" autoComplete="tel" placeholder="(67) 99999-9999" className="mt-2 h-11 rounded-xl" />
+              <label htmlFor="rsvp-whatsapp" className="text-sm font-semibold text-[#4d3036]">
+                WhatsApp para contato
+              </label>
+              <Input
+                id="rsvp-whatsapp"
+                value={whatsapp}
+                onChange={(event) => setWhatsapp(event.target.value)}
+                minLength={8}
+                maxLength={30}
+                required
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="(67) 99999-9999"
+                className="mt-2 h-11 rounded-xl"
+              />
+              <p className="mt-1.5 text-xs leading-5 text-[#8b787c]">
+                Usaremos este número apenas caso seja necessário entrar em contato sobre a confirmação.
+              </p>
             </div>
           </div>
 
           <div className="mt-5 flex gap-3 rounded-2xl border border-[#ead8ca] bg-[#fff8f0] p-4 text-sm leading-6 text-[#6f555a]">
             <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[#9b722c]" />
-            <p><strong>Importante:</strong> somente os nomes cadastrados em “Pessoas confirmadas” abaixo entram no total da festa. Marque cada um como adulto ou criança.</p>
+            <p>
+              <strong>Importante:</strong> se o responsável também for à festa, mantenha marcada a opção acima.
+              Adicione abaixo somente as outras pessoas que irão junto e marque cada uma como adulto ou criança.
+            </p>
           </div>
 
           <div className="mt-6 border-t border-[#eee4de] pt-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="font-serif text-xl font-semibold text-[#391a22]">Pessoas confirmadas</p>
-                <p className="mt-1 text-sm text-[#806e72]">Nome + adulto ou criança</p>
+                <p className="mt-1 text-sm text-[#806e72]">
+                  {includeContactAsAttendee
+                    ? "O responsável entra automaticamente. Adicione abaixo as outras pessoas."
+                    : "Adicione abaixo todas as pessoas que irão à festa."}
+                </p>
               </div>
-              <Button type="button" variant="outline" onClick={addAttendee} disabled={attendees.length >= 12} className="rounded-full border-[#cdb8ab] bg-[#fffaf5]"><Plus className="size-4" /> Adicionar</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={addAttendee}
+                disabled={attendees.length >= maxManualAttendees}
+                className="rounded-full border-[#cdb8ab] bg-[#fffaf5]"
+              >
+                <Plus className="size-4" /> Adicionar
+              </Button>
             </div>
 
+            {includeContactAsAttendee && contactName.trim().length >= 2 && !contactAlreadyListed ? (
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#d8c8b9] bg-[#f7f0e6] px-4 py-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#8f6c31]">
+                    Responsável incluído automaticamente
+                  </p>
+                  <p className="mt-0.5 font-semibold text-[#4d3036]">{contactName.trim()}</p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#6b5634] shadow-sm">
+                  <UserRound className="mr-1 inline size-3.5" />
+                  Adulto
+                </span>
+              </div>
+            ) : null}
+
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
-              <span className="rounded-full bg-[#eee8dc] px-3 py-1.5 text-[#6b5634]">{attendeeSummary.total} pessoa(s)</span>
-              <span className="rounded-full bg-[#eee8dc] px-3 py-1.5 text-[#6b5634]">{attendeeSummary.adults} adulto(s)</span>
-              <span className="rounded-full bg-[#f4e7e0] px-3 py-1.5 text-[#7d1f37]">{attendeeSummary.children} criança(s)</span>
+              <span className="rounded-full bg-[#eee8dc] px-3 py-1.5 text-[#6b5634]">
+                {attendeeSummary.total} pessoa(s)
+              </span>
+              <span className="rounded-full bg-[#eee8dc] px-3 py-1.5 text-[#6b5634]">
+                {attendeeSummary.adults} adulto(s)
+              </span>
+              <span className="rounded-full bg-[#f4e7e0] px-3 py-1.5 text-[#7d1f37]">
+                {attendeeSummary.children} criança(s)
+              </span>
             </div>
 
             <div className="mt-4 space-y-3">
               {attendees.map((attendee, index) => (
-                <div key={index} className="grid gap-3 rounded-2xl border border-[#e4d6cd] bg-[#fffdf9] p-4 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+                <div
+                  key={index}
+                  className="grid gap-3 rounded-2xl border border-[#e4d6cd] bg-[#fffdf9] p-4 sm:grid-cols-[1fr_auto_auto] sm:items-end"
+                >
                   <div>
-                    <label htmlFor={`attendee-${index}`} className="text-xs font-bold uppercase tracking-[0.12em] text-[#806e72]">Pessoa {index + 1}</label>
-                    <Input id={`attendee-${index}`} value={attendee.name} onChange={(event) => updateAttendee(index, { name: event.target.value })} minLength={2} maxLength={80} required placeholder="Nome completo" className="mt-2 h-10 rounded-xl bg-white" />
+                    <label
+                      htmlFor={`attendee-${index}`}
+                      className="text-xs font-bold uppercase tracking-[0.12em] text-[#806e72]"
+                    >
+                      {includeContactAsAttendee ? `Outra pessoa ${index + 1}` : `Pessoa ${index + 1}`}
+                    </label>
+                    <Input
+                      id={`attendee-${index}`}
+                      value={attendee.name}
+                      onChange={(event) => updateAttendee(index, { name: event.target.value })}
+                      minLength={2}
+                      maxLength={80}
+                      placeholder="Nome completo"
+                      className="mt-2 h-10 rounded-xl bg-white"
+                    />
                   </div>
+
                   <div className="grid grid-cols-2 gap-2">
-                    <button type="button" onClick={() => updateAttendee(index, { category: "adult" })} className={`h-10 rounded-xl border px-3 text-sm font-semibold transition ${attendee.category === "adult" ? "border-[#7d1f37] bg-[#7d1f37] text-white" : "border-[#d9c8bd] bg-white text-[#654f54] hover:bg-[#f8f0ea]"}`}><UserRound className="mr-1.5 inline size-4" />Adulto</button>
-                    <button type="button" onClick={() => updateAttendee(index, { category: "child" })} className={`h-10 rounded-xl border px-3 text-sm font-semibold transition ${attendee.category === "child" ? "border-[#7d1f37] bg-[#7d1f37] text-white" : "border-[#d9c8bd] bg-white text-[#654f54] hover:bg-[#f8f0ea]"}`}><Baby className="mr-1.5 inline size-4" />Criança</button>
+                    <button
+                      type="button"
+                      onClick={() => updateAttendee(index, { category: "adult" })}
+                      className={`h-10 rounded-xl border px-3 text-sm font-semibold transition ${
+                        attendee.category === "adult"
+                          ? "border-[#7d1f37] bg-[#7d1f37] text-white"
+                          : "border-[#d9c8bd] bg-white text-[#654f54] hover:bg-[#f8f0ea]"
+                      }`}
+                    >
+                      <UserRound className="mr-1.5 inline size-4" />
+                      Adulto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateAttendee(index, { category: "child" })}
+                      className={`h-10 rounded-xl border px-3 text-sm font-semibold transition ${
+                        attendee.category === "child"
+                          ? "border-[#7d1f37] bg-[#7d1f37] text-white"
+                          : "border-[#d9c8bd] bg-white text-[#654f54] hover:bg-[#f8f0ea]"
+                      }`}
+                    >
+                      <Baby className="mr-1.5 inline size-4" />
+                      Criança
+                    </button>
                   </div>
-                  <Button type="button" variant="ghost" onClick={() => removeAttendee(index)} disabled={attendees.length === 1} className="h-10 rounded-xl px-3 text-[#8a263d] hover:bg-[#f4e7e0]" aria-label={`Remover pessoa ${index + 1}`}><Trash2 className="size-4" /></Button>
+
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => removeAttendee(index)}
+                    className="h-10 rounded-xl px-3 text-[#8a263d] hover:bg-[#f4e7e0]"
+                    aria-label={`Remover pessoa ${index + 1}`}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
                 </div>
               ))}
             </div>
           </div>
 
-          <Button type="submit" disabled={submitting} className="mt-6 h-12 w-full rounded-full bg-[#7d1f37] text-base font-bold text-white hover:bg-[#64172b]">{submitting ? "Confirmando…" : "Confirmar presença"}</Button>
+          <Button
+            type="submit"
+            disabled={submitting}
+            className="mt-6 h-12 w-full rounded-full bg-[#7d1f37] text-base font-bold text-white hover:bg-[#64172b]"
+          >
+            {submitting ? "Confirmando…" : "Confirmar presença"}
+          </Button>
         </form>
       </div>
+
       <Toaster richColors closeButton position="top-center" />
     </section>
   );
