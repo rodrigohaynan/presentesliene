@@ -26,6 +26,7 @@ export function RsvpForm() {
   const [whatsapp, setWhatsapp] = useState("");
   const [attendees, setAttendees] = useState<AttendeeDraft[]>([{ name: "", category: "adult" }]);
   const [includeContactAsAttendee, setIncludeContactAsAttendee] = useState(true);
+  const [contactCategory, setContactCategory] = useState<AttendeeCategory>("adult");
   const [submitting, setSubmitting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [rsvpNote, setRsvpNote] = useState("Informe todas as pessoas que irão com você e marque cada uma como adulto ou criança.");
@@ -70,11 +71,12 @@ export function RsvpForm() {
       return cleanedAttendees;
     }
 
-    return [{ name: contact, category: "adult" }, ...cleanedAttendees];
+    return [{ name: contact, category: contactCategory }, ...cleanedAttendees];
   }, [
     cleanedAttendees,
     contactAlreadyListed,
     contactName,
+    contactCategory,
     includeContactAsAttendee,
   ]);
 
@@ -87,7 +89,7 @@ export function RsvpForm() {
     [effectiveAttendees],
   );
 
-  const maxManualAttendees = includeContactAsAttendee ? 11 : 12;
+  const maxManualAttendees = includeContactAsAttendee && !contactAlreadyListed ? 11 : 12;
 
   function updateAttendee(index: number, patch: Partial<AttendeeDraft>) {
     setAttendees((items) =>
@@ -216,6 +218,7 @@ export function RsvpForm() {
               setWhatsapp("");
               setAttendees([{ name: "", category: "adult" }]);
               setIncludeContactAsAttendee(true);
+              setContactCategory("adult");
             }}
             className="mt-6 rounded-full border-[#cdb8ab] bg-white"
           >
@@ -279,7 +282,7 @@ export function RsvpForm() {
                     {contactAlreadyListed
                       ? "Este nome já está na lista abaixo e não será duplicado."
                       : includeContactAsAttendee
-                        ? "Será incluído automaticamente como adulto na lista de confirmados."
+                        ? "Será incluído automaticamente. Você pode marcar como adulto ou criança abaixo."
                         : "Marque esta opção para incluir o responsável automaticamente."}
                   </span>
                 </span>
@@ -345,10 +348,22 @@ export function RsvpForm() {
                   </p>
                   <p className="mt-0.5 font-semibold text-[#4d3036]">{contactName.trim()}</p>
                 </div>
-                <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-[#6b5634] shadow-sm">
-                  <UserRound className="mr-1 inline size-3.5" />
-                  Adulto
-                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setContactCategory("adult")}
+                    className={`h-9 rounded-full border px-3 text-xs font-bold transition ${contactCategory === "adult" ? "border-[#7d1f37] bg-[#7d1f37] text-white" : "border-[#d9c8bd] bg-white text-[#654f54]"}`}
+                  >
+                    <UserRound className="mr-1 inline size-3.5" /> Adulto
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setContactCategory("child")}
+                    className={`h-9 rounded-full border px-3 text-xs font-bold transition ${contactCategory === "child" ? "border-[#7d1f37] bg-[#7d1f37] text-white" : "border-[#d9c8bd] bg-white text-[#654f54]"}`}
+                  >
+                    <Baby className="mr-1 inline size-3.5" /> Criança
+                  </button>
+                </div>
               </div>
             ) : null}
 

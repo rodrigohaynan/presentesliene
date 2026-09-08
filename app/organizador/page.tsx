@@ -6,6 +6,8 @@ import {
   Baby,
   CheckCircle2,
   Edit3,
+  FileSpreadsheet,
+  FileText,
   Gift,
   ImagePlus,
   KeyRound,
@@ -33,6 +35,7 @@ import {
   type PartyConfig,
   type RsvpSubmission,
 } from "@/lib/party-data";
+import { exportAttendancePdf, exportAttendanceXlsx } from "@/lib/attendance-export";
 
 type OrganizerRole = "admin" | "birthday";
 
@@ -150,6 +153,16 @@ export default function OrganizerPage() {
       children: attendees.filter((item) => item.category === "child").length,
     };
   }, [data?.rsvps]);
+
+  const attendanceExportPayload = useMemo(() => ({
+    eventTitle: data?.party.eventTitle ?? "Festa",
+    groups: (data?.rsvps ?? []).map((rsvp) => ({
+      contactName: rsvp.contactName,
+      whatsapp: rsvp.whatsapp,
+      createdAt: rsvp.createdAt,
+      attendees: rsvp.attendees,
+    })),
+  }), [data?.party.eventTitle, data?.rsvps]);
 
   function openGiftEditor(draft: GiftDraft) {
     setEditingGift(draft);
@@ -497,7 +510,29 @@ export default function OrganizerPage() {
           <section className="mt-7">
             <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
               <div><p className="text-sm font-bold uppercase tracking-[0.14em] text-[#9b722c]">Lista privada</p><h2 className="mt-1 font-serif text-3xl font-semibold">Convidados confirmados</h2><p className="mt-2 text-sm text-[#806e72]">Você pode corrigir nomes, trocar adulto/criança, remover uma pessoa da confirmação ou excluir a confirmação inteira.</p></div>
-              <div className="flex gap-2 text-sm"><span className="rounded-full bg-white px-4 py-2 font-semibold">{attendance.adults} adultos</span><span className="rounded-full bg-white px-4 py-2 font-semibold">{attendance.children} crianças</span></div>
+              <div className="flex flex-wrap items-center justify-end gap-2 text-sm">
+                <span className="rounded-full bg-white px-4 py-2 font-semibold">{attendance.total} convidados</span>
+                <span className="rounded-full bg-white px-4 py-2 font-semibold">{attendance.adults} adultos</span>
+                <span className="rounded-full bg-white px-4 py-2 font-semibold">{attendance.children} crianças</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={attendance.total === 0}
+                  onClick={() => exportAttendancePdf(attendanceExportPayload)}
+                  className="h-10 rounded-full border-[#d7c6bb] bg-white"
+                >
+                  <FileText className="size-4" /> PDF
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={attendance.total === 0}
+                  onClick={() => exportAttendanceXlsx(attendanceExportPayload)}
+                  className="h-10 rounded-full border-[#d7c6bb] bg-white"
+                >
+                  <FileSpreadsheet className="size-4" /> XLSX
+                </Button>
+              </div>
             </div>
 
             {editingRsvp && (
