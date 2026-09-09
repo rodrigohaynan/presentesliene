@@ -5,6 +5,13 @@
 [build.environment]
   NODE_VERSION = "22"
 
+# URL limpa e estável para a miniatura social.
+# O Netlify Image CDN converte a arte WEBP local para JPEG 1200x630.
+[[redirects]]
+  from = "/liene-whatsapp.jpg"
+  to = "/.netlify/images?url=/images/liene-31.webp&w=1200&h=630&fit=cover&position=center&fm=jpg&q=82"
+  status = 200
+
 [[headers]]
   for = "/api/*"
   [headers.values]
