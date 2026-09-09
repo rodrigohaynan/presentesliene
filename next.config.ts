@@ -1,7 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  poweredByHeader: false,
+
+  // Mantém title/description/og:image no <head> inicial também para crawlers
+  // de compartilhamento como WhatsApp, Facebook e Instagram.
+  htmlLimitedBots: /.*/,
 };
 
 export default nextConfig;
