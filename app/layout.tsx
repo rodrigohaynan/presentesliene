@@ -5,7 +5,7 @@ const SITE_URL = "https://niver-liene.netlify.app";
 const TITLE = "Liene 31 anos — Convite, presença e presentes";
 const DESCRIPTION =
   "Convite para celebrar os 31 anos da Liene, com confirmação de presença e sugestões de presentes.";
-const SOCIAL_IMAGE = "/liene-whatsapp.jpg";
+const SOCIAL_IMAGE = "/liene-whatsapp-v2.jpg";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
